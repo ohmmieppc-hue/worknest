@@ -66,8 +66,11 @@ const s = StyleSheet.create({
   label: { fontSize: 8.5, color: muted, marginBottom: 2 },
   bold: { fontWeight: 600 },
   muted: { color: muted },
-  title: { fontSize: 18, fontWeight: 600, textAlign: "right" },
-  subtitle: { fontSize: 9, color: muted, textAlign: "right", letterSpacing: 1 },
+  // Sarabun draws taller than react-pdf's line box at large sizes, so the
+  // title gets an explicit line height and room below it.
+  title: { fontSize: 18, fontWeight: 600, textAlign: "right", lineHeight: 1.6, marginBottom: 2 },
+  subtitle: { fontSize: 9, color: muted, textAlign: "right", letterSpacing: 1, lineHeight: 1.2 },
+  docHead: { alignItems: "flex-end" },
   section: { borderBottomWidth: 1, borderBottomColor: line, paddingBottom: 14, marginBottom: 14 },
   th: { fontSize: 8.5, color: muted, fontWeight: 600, paddingVertical: 5 },
   td: { paddingVertical: 5 },
@@ -103,7 +106,7 @@ export function DocumentPdf({ doc, items, extras }: { doc: DocumentRow; items: D
 
         <View style={[s.between, s.section]}>
           <Party label="ผู้ให้บริการ" party={doc.seller_snapshot} />
-          <View>
+          <View style={s.docHead}>
             <Text style={s.title}>{meta.label}</Text>
             <Text style={s.subtitle}>{meta.english}</Text>
             <View style={{ marginTop: 8 }}>
@@ -249,7 +252,8 @@ function Meta({ label, value, strong }: { label: string; value: string; strong?:
   return (
     <View style={[s.row, { justifyContent: "flex-end" }]}>
       <Text style={[s.muted, { width: 64, textAlign: "right", marginRight: 8 }]}>{label}</Text>
-      <Text style={[{ minWidth: 80, textAlign: "right" }, strong ? s.bold : {}]}>{value}</Text>
+      {/* Fixed width so every value ends on the same right edge as the title. */}
+      <Text style={[{ width: 92, textAlign: "right" }, strong ? s.bold : {}]}>{value}</Text>
     </View>
   );
 }
