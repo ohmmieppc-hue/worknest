@@ -5,6 +5,8 @@ import { DocumentStatusBadge } from "@/components/status-badge";
 import { formatDate, formatMoney } from "@/lib/format";
 import { requireWorkspace } from "@/lib/workspace";
 import type { DocumentRow, DocumentStatus } from "@/lib/types";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ใบเสนอราคา" };
 
@@ -20,7 +22,17 @@ type Row = Pick<DocumentRow, "id" | "number" | "title" | "status" | "issue_date"
   client: { name: string } | null;
 };
 
-export default async function QuotationsPage({ searchParams }: PageProps<"/quotations">) {
+// The Suspense boundary lives inside the page so client navigations into this
+// route (including search-param changes) can show the skeleton instantly.
+export default function QuotationsPage(props: PageProps<"/quotations">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <QuotationsPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function QuotationsPageContent({ searchParams }: PageProps<"/quotations">) {
   const { tab: tabParam } = await searchParams;
   const tab = TABS.find((t) => t.key === tabParam) ?? TABS[0];
 

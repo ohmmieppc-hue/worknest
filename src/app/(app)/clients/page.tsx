@@ -5,10 +5,22 @@ import { ClientStatusBadge } from "@/components/status-badge";
 import { clientKindLabel, clientStatusLabel } from "@/lib/format";
 import { requireWorkspace } from "@/lib/workspace";
 import type { Client, ClientStatus } from "@/lib/types";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ลูกค้า" };
 
-export default async function ClientsPage({ searchParams }: PageProps<"/clients">) {
+// The Suspense boundary lives inside the page so client navigations into this
+// route (including search-param changes) can show the skeleton instantly.
+export default function ClientsPage(props: PageProps<"/clients">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <ClientsPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function ClientsPageContent({ searchParams }: PageProps<"/clients">) {
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const status = typeof params.status === "string" && params.status in clientStatusLabel ? (params.status as ClientStatus) : "";

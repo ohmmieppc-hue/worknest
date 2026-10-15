@@ -8,10 +8,22 @@ import { requireWorkspace } from "@/lib/workspace";
 import type { Client, DocumentRow } from "@/lib/types";
 import { ClientForm } from "../client-form";
 import { archiveClientAction, updateClientAction } from "../actions";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ลูกค้า" };
 
-export default async function ClientPage({ params }: PageProps<"/clients/[id]">) {
+// The Suspense boundary lives inside the page so client navigations into this
+// route (including search-param changes) can show the skeleton instantly.
+export default function ClientPage(props: PageProps<"/clients/[id]">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <ClientPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function ClientPageContent({ params }: PageProps<"/clients/[id]">) {
   const { id } = await params;
   const { supabase } = await requireWorkspace();
 

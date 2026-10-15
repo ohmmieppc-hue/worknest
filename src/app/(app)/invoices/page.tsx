@@ -5,6 +5,8 @@ import { DocumentStatusBadge, PaymentStatusBadge } from "@/components/status-bad
 import { formatDate, formatMoney } from "@/lib/format";
 import { requireWorkspace } from "@/lib/workspace";
 import type { DocumentRow, InvoiceBalance } from "@/lib/types";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ใบแจ้งหนี้" };
 
@@ -22,7 +24,17 @@ const TABS: { key: string; label: string; match: (r: Row) => boolean }[] = [
   { key: "void", label: "ยกเลิก", match: (r) => r.status === "void" },
 ];
 
-export default async function InvoicesPage({ searchParams }: PageProps<"/invoices">) {
+// The Suspense boundary lives inside the page so client navigations into this
+// route (including search-param changes) can show the skeleton instantly.
+export default function InvoicesPage(props: PageProps<"/invoices">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <InvoicesPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function InvoicesPageContent({ searchParams }: PageProps<"/invoices">) {
   const { tab: tabParam } = await searchParams;
   const tab = TABS.find((t) => t.key === tabParam) ?? TABS[0];
 

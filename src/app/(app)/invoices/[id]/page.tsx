@@ -13,10 +13,22 @@ import { formatMoney, todayISO } from "@/lib/format";
 import { amountsDue } from "@/lib/payments";
 import type { InvoiceBalance } from "@/lib/types";
 import { PaymentPanel, type PaymentRow } from "./payment-panel";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ใบแจ้งหนี้" };
 
-export default async function InvoicePage({ params }: PageProps<"/invoices/[id]">) {
+// The Suspense boundary lives inside the page so client navigations into this
+// route (including search-param changes) can show the skeleton instantly.
+export default function InvoicePage(props: PageProps<"/invoices/[id]">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <InvoicePageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function InvoicePageContent({ params }: PageProps<"/invoices/[id]">) {
   const { id } = await params;
   const { supabase, doc, items } = await loadDocument("invoice", id);
   const shareLinks = doc.status === "draft" ? [] : await loadShareLinks(doc.id);

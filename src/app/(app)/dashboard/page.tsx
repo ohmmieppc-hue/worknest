@@ -6,6 +6,8 @@ import { docPath, DOC_META } from "@/lib/documents";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import { requireWorkspace } from "@/lib/workspace";
 import type { DocumentRow, DocumentType, InvoiceBalance } from "@/lib/types";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ภาพรวม" };
 
@@ -29,7 +31,17 @@ const eventLabel: Record<string, string> = {
   voided: "ยกเลิก",
 };
 
-export default async function DashboardPage() {
+// The Suspense boundary lives inside the page so client navigations into this
+// route can show the skeleton instantly.
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <DashboardPageContent />
+    </Suspense>
+  );
+}
+
+async function DashboardPageContent() {
   const { supabase, workspace } = await requireWorkspace();
   const monthStart = `${todayISO().slice(0, 7)}-01`;
 

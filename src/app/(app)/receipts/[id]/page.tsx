@@ -10,10 +10,22 @@ import { loadDocument, loadShareLinks, loadDocumentNumber } from "@/lib/document
 import { formatDate } from "@/lib/format";
 import { paymentMethodLabel } from "@/lib/payments";
 import type { Payment } from "@/lib/types";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ใบเสร็จรับเงิน" };
 
-export default async function ReceiptPage({ params }: PageProps<"/receipts/[id]">) {
+// The Suspense boundary lives inside the page so client navigations into this
+// route (including search-param changes) can show the skeleton instantly.
+export default function ReceiptPage(props: PageProps<"/receipts/[id]">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <ReceiptPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function ReceiptPageContent({ params }: PageProps<"/receipts/[id]">) {
   const { id } = await params;
   const { supabase, doc, items } = await loadDocument("receipt", id);
   const shareLinks = doc.status === "draft" ? [] : await loadShareLinks(doc.id);

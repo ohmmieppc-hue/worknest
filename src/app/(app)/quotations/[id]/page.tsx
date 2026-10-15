@@ -10,10 +10,22 @@ import type { DocumentRow } from "@/lib/types";
 import { DocumentActions } from "@/components/document-actions";
 import { DocumentExport } from "@/components/document-export";
 import { SharePanel } from "@/components/share-panel";
+import { Suspense } from "react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ใบเสนอราคา" };
 
-export default async function QuotationPage({ params }: PageProps<"/quotations/[id]">) {
+// The Suspense boundary lives inside the page so client navigations into this
+// route (including search-param changes) can show the skeleton instantly.
+export default function QuotationPage(props: PageProps<"/quotations/[id]">) {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <QuotationPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
   const { id } = await params;
   const { supabase, doc, items } = await loadDocument("quotation", id);
   const shareLinks = doc.status === "draft" ? [] : await loadShareLinks(doc.id);
