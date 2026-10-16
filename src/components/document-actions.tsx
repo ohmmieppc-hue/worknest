@@ -6,6 +6,7 @@ import { Button, ErrorMessage, inputClass } from "@/components/ui";
 import { DOC_META } from "@/lib/documents";
 import type { DocumentStatus, DocumentType } from "@/lib/types";
 import {
+  createDeliveryNoteFromQuotationAction,
   createInvoiceFromQuotationAction,
   duplicateDocumentAction,
   setDocumentStatusAction,
@@ -35,8 +36,9 @@ export function DocumentActions({ type, id, status }: { type: DocumentType; id: 
     });
   }
 
-  const editable = type === "quotation" || type === "invoice";
-  const awaitingResponse = type === "quotation" && (status === "issued" || status === "sent" || status === "viewed");
+  const editable = type === "quotation" || type === "invoice" || type === "delivery_note";
+  const isDelivery = type === "delivery_note";
+  const awaitingResponse = (type === "quotation" || isDelivery) && (status === "issued" || status === "sent" || status === "viewed");
 
   return (
     <div className="space-y-3">
@@ -44,6 +46,11 @@ export function DocumentActions({ type, id, status }: { type: DocumentType; id: 
         {type === "quotation" && status === "accepted" && (
           <Button onClick={() => setPanel(panel === "invoice" ? "none" : "invoice")} disabled={pending}>
             สร้างใบแจ้งหนี้
+          </Button>
+        )}
+        {type === "quotation" && status === "accepted" && (
+          <Button variant="secondary" onClick={() => run(() => createDeliveryNoteFromQuotationAction(id))} disabled={pending}>
+            สร้างใบส่งมอบงาน
           </Button>
         )}
         {editable && status === "issued" && (
@@ -55,24 +62,30 @@ export function DocumentActions({ type, id, status }: { type: DocumentType; id: 
           <>
             <Button
               variant="secondary"
-              onClick={() => confirm(`บันทึกว่าลูกค้าตอบรับ${label}นี้?`) && run(() => setDocumentStatusAction(type, id, "accepted"))}
+              onClick={() =>
+                confirm(isDelivery ? "บันทึกว่าลูกค้าตรวจรับงานแล้ว?" : `บันทึกว่าลูกค้าตอบรับ${label}นี้?`) &&
+                run(() => setDocumentStatusAction(type, id, "accepted"))
+              }
               disabled={pending}
             >
-              ลูกค้าตอบรับ
+              {isDelivery ? "ลูกค้าตรวจรับแล้ว" : "ลูกค้าตอบรับ"}
             </Button>
             <Button
               variant="secondary"
-              onClick={() => confirm(`บันทึกว่าลูกค้าปฏิเสธ${label}นี้?`) && run(() => setDocumentStatusAction(type, id, "rejected"))}
+              onClick={() =>
+                confirm(isDelivery ? "บันทึกว่าลูกค้าขอแก้ไขงาน?" : `บันทึกว่าลูกค้าปฏิเสธ${label}นี้?`) &&
+                run(() => setDocumentStatusAction(type, id, "rejected"))
+              }
               disabled={pending}
             >
-              ลูกค้าปฏิเสธ
+              {isDelivery ? "ลูกค้าขอแก้ไข" : "ลูกค้าปฏิเสธ"}
             </Button>
           </>
         )}
         {editable && (
           <Button
             variant="secondary"
-            onClick={() => run(() => duplicateDocumentAction(type as "quotation" | "invoice", id))}
+            onClick={() => run(() => duplicateDocumentAction(type as "quotation" | "invoice" | "delivery_note", id))}
             disabled={pending}
           >
             {status === "void" ? "ออกฉบับใหม่แทน" : "คัดลอกเป็นฉบับใหม่"}

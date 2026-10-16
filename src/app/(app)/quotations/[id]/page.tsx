@@ -6,12 +6,13 @@ import { DocumentEditor } from "@/components/document-editor";
 import { DocumentPaper, VoidNotice } from "@/components/document-paper";
 import { loadClientOptions, loadServiceOptions, loadDocument, loadShareLinks } from "@/lib/document-data";
 import { formatMoney } from "@/lib/format";
-import type { DocumentRow } from "@/lib/types";
+import type { DocumentRevision, DocumentRow } from "@/lib/types";
 import { DocumentActions } from "@/components/document-actions";
 import { DocumentExport } from "@/components/document-export";
 import { SharePanel } from "@/components/share-panel";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { RevisionPanel } from "./revision-panel";
 
 export const metadata: Metadata = { title: "ใบเสนอราคา" };
 
@@ -44,13 +45,19 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
     );
   }
 
-  const { data: invoiceData } = await supabase
-    .from("documents")
-    .select("id, number, status, total")
-    .eq("type", "invoice")
-    .eq("source_document_id", doc.id)
-    .order("created_at");
-  const invoices = (invoiceData ?? []) as Pick<DocumentRow, "id" | "number" | "status" | "total">[];
+  const [{ data: invoiceData }, { data: revisionData }] = await Promise.all([
+    supabase
+      .from("documents")
+      .select("id, type, number, status, total")
+      .in("type", ["invoice", "delivery_note"])
+      .eq("source_document_id", doc.id)
+      .order("created_at"),
+    supabase.from("document_revisions").select("id, note, requested_by, created_at").eq("document_id", doc.id).order("created_at"),
+  ]);
+  const revisions = (revisionData ?? []) as DocumentRevision[];
+  const linked = (invoiceData ?? []) as Pick<DocumentRow, "id" | "type" | "number" | "status" | "total">[];
+  const invoices = linked.filter((d) => d.type === "invoice");
+  const deliveries = linked.filter((d) => d.type === "delivery_note");
 
   return (
     <div>
@@ -72,6 +79,15 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
 
         {doc.status !== "void" && <SharePanel type="quotation" documentId={doc.id} links={shareLinks} />}
 
+        {(doc.status === "accepted" || revisions.length > 0) && (
+          <RevisionPanel
+            quotationId={doc.id}
+            included={doc.revisions_included}
+            revisions={revisions}
+            canLog={doc.status === "accepted"}
+          />
+        )}
+
         {invoices.length > 0 && (
           <Card className="mb-6 overflow-hidden">
             <h2 className="border-b border-stone-200 px-4 py-3 text-sm font-semibold">ใบแจ้งหนี้จากใบเสนอราคานี้</h2>
@@ -84,6 +100,22 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
                       <span className="tabular-nums">{formatMoney(inv.total)}</span>
                       <DocumentStatusBadge status={inv.status} />
                     </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
+        {deliveries.length > 0 && (
+          <Card className="mb-6 overflow-hidden">
+            <h2 className="border-b border-stone-200 px-4 py-3 text-sm font-semibold">ใบส่งมอบงาน</h2>
+            <ul className="divide-y divide-stone-100 text-sm">
+              {deliveries.map((dn) => (
+                <li key={dn.id}>
+                  <Link href={`/delivery-notes/${dn.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-stone-50">
+                    <span className="font-medium">{dn.number ?? "ร่าง"}</span>
+                    <DocumentStatusBadge status={dn.status} type="delivery_note" />
                   </Link>
                 </li>
               ))}

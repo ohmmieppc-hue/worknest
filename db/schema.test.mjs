@@ -210,6 +210,39 @@ const ev = await one(`select actor, actor_name, ip from document_events where do
 ok('accept evidence recorded', ev.actor === 'client' && ev.actor_name === 'สมชาย ใจดี' && ev.ip === null);
 await expectError('portal cannot respond twice', `select portal_respond('tok-live', false, 'x', null, null)`, [], /already accepted/);
 
+// Revision rounds on an accepted quotation
+await db.query(`insert into document_revisions (workspace_id, document_id, note) values ($1,$2,'แก้สีโลโก้')`, [ws, qt4]);
+ok('revision logged on accepted quotation', (await one(`select count(*)::int c from document_revisions where document_id=$1`, [qt4])).c === 1);
+await expectError('revision blocked on non-accepted document',
+  `insert into document_revisions (workspace_id, document_id, note) values ($1,$2,'x')`, [ws, rc2], /accepted quotation/);
+await expectError('revision needs a note',
+  `insert into document_revisions (workspace_id, document_id, note) values ($1,$2,'  ')`, [ws, qt4], /check/);
+pd = (await one(`select portal_get_document('tok-live') d`)).d;
+ok('portal shows revisions', pd.revisions?.length === 1 && pd.revisions[0].note === 'แก้สีโลโก้');
+
+// Delivery notes: client signs off or asks for changes through the portal
+const newDn = async (token) => {
+  const { id } = await one(`insert into documents (workspace_id, type, client_id, source_document_id) values ($1,'delivery_note',$2,$3) returning id`, [ws, client, qt4]);
+  await db.query(`insert into document_items (workspace_id, document_id, description, unit_price) values ($1,$2,'ไฟล์งานออกแบบ',0)`, [ws, id]);
+  await db.query(`update documents set status='issued' where id=$1`, [id]);
+  await db.query(`update documents set status='sent' where id=$1`, [id]);
+  await db.query(`insert into share_links (workspace_id, document_id, token_hash) values ($1,$2,sha256(convert_to($3,'UTF8')))`, [ws, id, token]);
+  return id;
+};
+const dn1 = await newDn('tok-dn1');
+ok('delivery note numbered DN-', (await one(`select number from documents where id=$1`, [dn1])).number.startsWith('DN-'));
+ok('delivery note view marks viewed', (await one(`select portal_record_view('tok-dn1', null, null) v`)).v === true);
+await expectError('asking for changes needs a note', `select portal_respond('tok-dn1', false, 'สมชาย', null, null, '  ')`, [], /note is required/);
+ok('client asks for changes', (await one(`select portal_respond('tok-dn1', false, 'สมชาย', null, null, 'ขอปรับฟอนต์') s`)).s === 'rejected');
+const revs = (await db.query(`select note, requested_by from document_revisions where document_id=$1 order by created_at`, [qt4])).rows;
+ok('change request logged as revision on quotation', revs.length === 2 && revs[1].requested_by === 'client' && revs[1].note.includes('ขอปรับฟอนต์'));
+pd = (await one(`select portal_get_document('tok-dn1') d`)).d;
+ok('portal returns response evidence', pd.response?.actor_name === 'สมชาย' && pd.response?.note === 'ขอปรับฟอนต์');
+const dn2 = await newDn('tok-dn2');
+ok('client signs off delivery', (await one(`select portal_respond('tok-dn2', true, 'สมชาย ใจดี', null, null) s`)).s === 'accepted');
+ok('sign-off adds no revision', (await one(`select count(*)::int c from document_revisions where document_id=$1`, [qt4])).c === 2);
+await expectError('delivery note cannot be answered twice', `select portal_respond('tok-dn2', false, 'x', null, null, 'y')`, [], /already accepted/);
+
 // Notifications (secret-gated)
 await db.query(`update auth.users set email = 'owner@example.com'`);
 await db.query(`insert into app_secrets (name, secret_hash) values ('notify', sha256(convert_to('s3cret', 'UTF8')))`);

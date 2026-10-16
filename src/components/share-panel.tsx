@@ -64,7 +64,7 @@ export function SharePanel({ type, documentId, links }: { type: DocumentType; do
         <div>
           <h2 className="font-semibold">ลิงก์สำหรับลูกค้า</h2>
           <p className="text-xs text-stone-500">
-            ลูกค้าเปิดดู{type === "quotation" ? " ตอบรับ" : ""}และดาวน์โหลด PDF ได้โดยไม่ต้องสมัคร · ลิงก์มีอายุ 90 วัน
+            ลูกค้าเปิดดู{type === "quotation" ? " ตอบรับ" : type === "delivery_note" ? " ตรวจรับ" : ""}และดาวน์โหลด PDF ได้โดยไม่ต้องสมัคร · ลิงก์มีอายุ 90 วัน
           </p>
         </div>
         <Button variant="secondary" onClick={create} disabled={pending}>

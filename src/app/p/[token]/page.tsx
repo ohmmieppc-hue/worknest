@@ -6,6 +6,8 @@ import { DocumentPaper, TotalRow } from "@/components/document-paper";
 import { PaymentInstructions } from "@/components/payment-instructions";
 import { DOC_META } from "@/lib/documents";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
+import { logoUrl } from "@/lib/logo";
+import { RevisionCounter, RevisionList } from "@/components/revisions";
 import { amountsDue, paymentMethodLabel } from "@/lib/payments";
 import { notifyClientEvent } from "@/lib/notify";
 import { getPortalDocument, requestMeta } from "@/lib/portal";
@@ -50,18 +52,26 @@ async function Portal({ params }: Pick<PageProps<"/p/[token]">, "params">) {
 
   const due = doc.type === "invoice" && data.balance ? amountsDue(doc, data.balance) : null;
   const expired = doc.type === "quotation" && (doc.status === "expired" || (!!doc.valid_until && doc.valid_until < todayISO()));
-  const canRespond = doc.type === "quotation" && ["issued", "sent", "viewed"].includes(doc.status) && !expired;
+  const isDelivery = doc.type === "delivery_note";
+  const canRespond = (doc.type === "quotation" || isDelivery) && ["issued", "sent", "viewed"].includes(doc.status) && !expired;
   const sellerName = doc.seller_snapshot?.legal_name ?? "";
+  const sellerLogo = logoUrl(doc.seller_snapshot?.logo_path);
 
   return (
     <>
       <header className="border-b border-stone-200 bg-white print:hidden">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div>
-            <p className="font-semibold">{sellerName}</p>
-            <p className="text-xs text-stone-500">
-              {meta.label} {doc.number}
-            </p>
+          <div className="flex items-center gap-3">
+            {sellerLogo && (
+              // eslint-disable-next-line @next/next/no-img-element -- public storage URL
+              <img src={sellerLogo} alt="" className="max-h-10 max-w-24 object-contain" />
+            )}
+            <div>
+              <p className="font-semibold">{sellerName}</p>
+              <p className="text-xs text-stone-500">
+                {meta.label} {doc.number}
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <a href={`/p/${token}/pdf?download=1`} className={buttonClass("secondary")} download>
@@ -81,6 +91,12 @@ async function Portal({ params }: Pick<PageProps<"/p/[token]">, "params">) {
             <Banner tone="success">ตอบรับใบเสนอราคาแล้วเมื่อ {formatDate(doc.responded_at)} ขอบคุณครับ</Banner>
           )}
           {doc.type === "quotation" && doc.status === "rejected" && <Banner tone="muted">ใบเสนอราคานี้ได้รับการปฏิเสธแล้ว</Banner>}
+          {isDelivery && doc.status === "accepted" && (
+            <Banner tone="success">ตรวจรับงานแล้วเมื่อ {formatDate(doc.responded_at)} ขอบคุณครับ</Banner>
+          )}
+          {isDelivery && doc.status === "rejected" && (
+            <Banner tone="info">ส่งคำขอแก้ไขแล้ว ผู้ให้บริการจะแก้งานและส่งใบส่งมอบงานฉบับใหม่ให้ตรวจอีกครั้ง</Banner>
+          )}
           {expired && doc.status !== "accepted" && doc.status !== "rejected" && (
             <Banner tone="warning">ใบเสนอราคานี้หมดอายุแล้ว (ยืนราคาถึง {formatDate(doc.valid_until)}) กรุณาติดต่อผู้ให้บริการ</Banner>
           )}
@@ -89,7 +105,7 @@ async function Portal({ params }: Pick<PageProps<"/p/[token]">, "params">) {
           )}
         </div>
 
-        <DocumentPaper doc={doc} items={data.items} reference={data.reference}>
+        <DocumentPaper doc={doc} items={data.items} reference={data.reference} response={data.response}>
           {due && doc.status !== "void" && due.outstanding > 0 && (
             <PaymentInstructions seller={doc.seller_snapshot} cashDue={due.cashDue} paid={Number(data.balance?.settled ?? 0)} />
           )}
@@ -109,13 +125,36 @@ async function Portal({ params }: Pick<PageProps<"/p/[token]">, "params">) {
           )}
         </DocumentPaper>
 
+        {doc.type === "quotation" && doc.status === "accepted" && data.revisions && (
+          <Card className="mt-6 p-6 print:hidden">
+            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+              <h2 className="text-lg font-semibold">รอบแก้ไขที่ใช้ไป</h2>
+              <RevisionCounter used={data.revisions.length} included={doc.revisions_included} />
+            </div>
+            {data.revisions.length === 0 ? (
+              <p className="text-sm text-stone-500">ยังไม่ได้ใช้รอบแก้ไข</p>
+            ) : (
+              <RevisionList revisions={data.revisions} />
+            )}
+          </Card>
+        )}
+
         {canRespond && (
           <Card className="mt-6 p-6 print:hidden">
-            <h2 className="text-lg font-semibold">ตอบรับใบเสนอราคา</h2>
-            <p className="mb-4 text-sm text-stone-500">
-              ยอดรวม {formatMoney(doc.total)} บาท · ยืนราคาถึง {formatDate(doc.valid_until)}
-            </p>
-            <RespondForm token={token} />
+            {isDelivery ? (
+              <>
+                <h2 className="text-lg font-semibold">ตรวจรับงาน</h2>
+                <p className="mb-4 text-sm text-stone-500">ตรวจสอบงานตามรายการด้านบน แล้วกดตรวจรับ หรือแจ้งสิ่งที่ต้องการให้แก้ไข</p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold">ตอบรับใบเสนอราคา</h2>
+                <p className="mb-4 text-sm text-stone-500">
+                  ยอดรวม {formatMoney(doc.total)} บาท · ยืนราคาถึง {formatDate(doc.valid_until)}
+                </p>
+              </>
+            )}
+            <RespondForm token={token} kind={isDelivery ? "delivery_note" : "quotation"} />
           </Card>
         )}
 

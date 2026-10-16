@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/workspace";
 import { toThaiError } from "@/lib/errors";
+import { LOGO_MAX_BYTES, sniffImageType } from "@/lib/logo";
 
 export interface SettingsState {
   error?: string;
@@ -53,4 +54,56 @@ export async function updateWorkspaceAction(_prev: SettingsState, formData: Form
 
   revalidatePath("/", "layout");
   return { saved: true };
+}
+
+export interface LogoState {
+  error?: string;
+  saved?: boolean;
+}
+
+export async function uploadLogoAction(_prev: LogoState, formData: FormData): Promise<LogoState> {
+  const file = formData.get("logo");
+  if (!(file instanceof File) || file.size === 0) return { error: "เลือกไฟล์โลโก้ก่อน" };
+  if (file.size > LOGO_MAX_BYTES) return { error: "ไฟล์ใหญ่เกิน 1MB" };
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = sniffImageType(bytes);
+  if (!mime) return { error: "รองรับเฉพาะไฟล์ PNG หรือ JPG" };
+
+  const { supabase, user, workspace } = await requireWorkspace();
+  const path = `${workspace.id}/${crypto.randomUUID()}.${mime === "image/png" ? "png" : "jpg"}`;
+
+  const upload = await supabase.storage.from("logos").upload(path, bytes, { contentType: mime });
+  if (upload.error) return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่" };
+
+  const { data: row, error } = await supabase
+    .from("files")
+    .insert({
+      workspace_id: workspace.id,
+      kind: "logo",
+      storage_path: path,
+      mime_type: mime,
+      size_bytes: bytes.length,
+      original_name: file.name.slice(0, 200),
+      uploaded_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    await supabase.storage.from("logos").remove([path]);
+    return { error: toThaiError(error) };
+  }
+
+  const update = await supabase.from("workspaces").update({ logo_file_id: row.id }).eq("id", workspace.id);
+  if (update.error) return { error: toThaiError(update.error) };
+
+  revalidatePath("/", "layout");
+  return { saved: true };
+}
+
+// Only unlinks the logo: issued documents may still point at the file.
+export async function removeLogoAction(): Promise<void> {
+  const { supabase, workspace } = await requireWorkspace();
+  await supabase.from("workspaces").update({ logo_file_id: null }).eq("id", workspace.id);
+  revalidatePath("/", "layout");
 }

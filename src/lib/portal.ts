@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import type { DocumentItem, DocumentRow, InvoiceBalance, Payment } from "@/lib/types";
+import type { ClientResponse, DocumentItem, DocumentRevision, DocumentRow, InvoiceBalance, Payment } from "@/lib/types";
 
 export interface PortalDocument {
   document: DocumentRow;
@@ -8,6 +8,10 @@ export interface PortalDocument {
   balance: InvoiceBalance | null;
   payment: Pick<Payment, "received_on" | "cash_amount" | "wht_amount" | "method" | "reference"> | null;
   reference: string | null;
+  /** Quotations only. */
+  revisions: DocumentRevision[] | null;
+  /** Latest accept / reject by the client or owner. */
+  response: ClientResponse | null;
 }
 
 // Tokens are 32 random bytes in base64url; reject anything else before

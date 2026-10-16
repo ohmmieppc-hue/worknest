@@ -43,7 +43,7 @@ async function deliver(
 }
 
 /** Tell the workspace owners that a client viewed / accepted / rejected a document. */
-export async function notifyClientEvent(documentId: string, event: ClientEvent, actorName?: string | null) {
+export async function notifyClientEvent(documentId: string, event: ClientEvent, actorName?: string | null, note?: string | null) {
   const c = notifyClient();
   if (!c) return console.warn("[notify] CRON_SECRET not set; skipping", event, documentId);
   try {
@@ -56,7 +56,7 @@ export async function notifyClientEvent(documentId: string, event: ClientEvent, 
       key: `client_${event}:${documentId}`,
       to: ctx.emails,
       entityId: documentId,
-      email: clientEventEmail(ctx, event, actorName),
+      email: clientEventEmail(ctx, event, actorName, note),
     });
     console.info(`[notify] client_${event} ${ctx.number}: ${outcome}`);
   } catch (e) {

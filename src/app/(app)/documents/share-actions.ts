@@ -41,7 +41,7 @@ export async function createShareLinkAction(type: DocumentType, documentId: stri
   });
   if (error) return { error: toThaiError(error) };
 
-  if (current.status === "issued" && (type === "quotation" || type === "invoice")) {
+  if (current.status === "issued" && type !== "receipt") {
     const { error: sendError } = await supabase.from("documents").update({ status: "sent" }).eq("id", documentId);
     if (!sendError) {
       await supabase.from("document_events").insert({

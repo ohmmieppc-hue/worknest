@@ -3,7 +3,8 @@ import { Card } from "@/components/ui";
 import { bahtText } from "@/lib/bahttext";
 import { DOC_META } from "@/lib/documents";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { DocumentItem, DocumentRow, PartySnapshot } from "@/lib/types";
+import { logoUrl } from "@/lib/logo";
+import type { ClientResponse, DocumentItem, DocumentRow, PartySnapshot } from "@/lib/types";
 
 interface Props {
   doc: DocumentRow;
@@ -12,13 +13,18 @@ interface Props {
   reference?: ReactNode;
   /** Rendered under the totals (payment details, receipt breakdown…) */
   children?: ReactNode;
+  /** Delivery notes: the client's sign-off or change request. */
+  response?: ClientResponse | null;
 }
 
 // Read-only rendering of an issued document, built only from its snapshots so
 // later edits to the client or workspace never change it.
-export function DocumentPaper({ doc, items, reference, children }: Props) {
+export function DocumentPaper({ doc, items, reference, children, response }: Props) {
   const meta = DOC_META[doc.type];
+  // Delivery notes list what is handed over; prices stay on the quotation.
+  const priced = doc.type !== "delivery_note";
   const hasWht = Number(doc.wht_amount) > 0;
+  const logo = logoUrl(doc.seller_snapshot?.logo_path);
 
   return (
     <Card className="relative p-6 sm:p-10 print:border-0 print:p-0 print:shadow-none">
@@ -31,7 +37,13 @@ export function DocumentPaper({ doc, items, reference, children }: Props) {
         </span>
       )}
       <div className="flex flex-wrap justify-between gap-6 border-b border-stone-200 pb-6">
-        <Party title="ผู้ให้บริการ" party={doc.seller_snapshot} />
+        <div>
+          {logo && (
+            // eslint-disable-next-line @next/next/no-img-element -- public storage URL
+            <img src={logo} alt="" className="mb-3 max-h-14 max-w-44 object-contain" />
+          )}
+          <Party title="ผู้ให้บริการ" party={doc.seller_snapshot} />
+        </div>
         <div className="text-right">
           <p className="text-xl font-semibold">{meta.label}</p>
           <p className="text-sm text-stone-500">{meta.english}</p>
@@ -73,15 +85,19 @@ export function DocumentPaper({ doc, items, reference, children }: Props) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="mt-6 w-full min-w-[560px] text-sm">
+        <table className={`mt-6 w-full text-sm ${priced ? "min-w-[560px]" : ""}`}>
           <thead className="border-b border-stone-300 text-left text-xs text-stone-500">
             <tr>
               <th className="w-8 py-2 font-medium">#</th>
               <th className="py-2 font-medium">รายละเอียด</th>
               <th className="py-2 text-right font-medium">จำนวน</th>
-              <th className="py-2 text-right font-medium">ราคา/หน่วย</th>
-              <th className="py-2 text-right font-medium">ส่วนลด</th>
-              <th className="py-2 text-right font-medium">จำนวนเงิน</th>
+              {priced && (
+                <>
+                  <th className="py-2 text-right font-medium">ราคา/หน่วย</th>
+                  <th className="py-2 text-right font-medium">ส่วนลด</th>
+                  <th className="py-2 text-right font-medium">จำนวนเงิน</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
@@ -92,32 +108,38 @@ export function DocumentPaper({ doc, items, reference, children }: Props) {
                 <td className="py-2.5 text-right whitespace-nowrap tabular-nums">
                   {Number(i.quantity).toLocaleString("th-TH")} {i.unit}
                 </td>
-                <td className="py-2.5 text-right tabular-nums">{formatMoney(i.unit_price)}</td>
-                <td className="py-2.5 text-right tabular-nums">
-                  {Number(i.discount_amount) ? formatMoney(i.discount_amount) : "—"}
-                </td>
-                <td className="py-2.5 text-right tabular-nums">{formatMoney(i.amount)}</td>
+                {priced && (
+                  <>
+                    <td className="py-2.5 text-right tabular-nums">{formatMoney(i.unit_price)}</td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      {Number(i.discount_amount) ? formatMoney(i.discount_amount) : "—"}
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums">{formatMoney(i.amount)}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div className="mt-6 flex flex-wrap justify-between gap-6 border-t border-stone-200 pt-6">
-        <p className="max-w-sm self-end text-sm text-stone-600">({bahtText(hasWht ? doc.amount_payable : doc.total)})</p>
-        <dl className="w-full max-w-xs space-y-1.5 text-sm">
-          <TotalRow label="รวมเป็นเงิน" value={doc.subtotal} />
-          {Number(doc.discount_amount) > 0 && <TotalRow label="ส่วนลด" value={-Number(doc.discount_amount)} />}
-          {Number(doc.vat_amount) > 0 && <TotalRow label={`ภาษีมูลค่าเพิ่ม ${Number(doc.vat_rate)}%`} value={doc.vat_amount} />}
-          <TotalRow label="ยอดรวมทั้งสิ้น" value={doc.total} strong />
-          {hasWht && (
-            <>
-              <TotalRow label={`หัก ณ ที่จ่าย ${Number(doc.wht_rate)}%`} value={-Number(doc.wht_amount)} muted />
-              <TotalRow label="ยอดชำระสุทธิ" value={doc.amount_payable} strong />
-            </>
-          )}
-        </dl>
-      </div>
+      {priced && (
+        <div className="mt-6 flex flex-wrap justify-between gap-6 border-t border-stone-200 pt-6">
+          <p className="max-w-sm self-end text-sm text-stone-600">({bahtText(hasWht ? doc.amount_payable : doc.total)})</p>
+          <dl className="w-full max-w-xs space-y-1.5 text-sm">
+            <TotalRow label="รวมเป็นเงิน" value={doc.subtotal} />
+            {Number(doc.discount_amount) > 0 && <TotalRow label="ส่วนลด" value={-Number(doc.discount_amount)} />}
+            {Number(doc.vat_amount) > 0 && <TotalRow label={`ภาษีมูลค่าเพิ่ม ${Number(doc.vat_rate)}%`} value={doc.vat_amount} />}
+            <TotalRow label="ยอดรวมทั้งสิ้น" value={doc.total} strong />
+            {hasWht && (
+              <>
+                <TotalRow label={`หัก ณ ที่จ่าย ${Number(doc.wht_rate)}%`} value={-Number(doc.wht_amount)} muted />
+                <TotalRow label="ยอดชำระสุทธิ" value={doc.amount_payable} strong />
+              </>
+            )}
+          </dl>
+        </div>
+      )}
 
       {children}
 
@@ -130,9 +152,11 @@ export function DocumentPaper({ doc, items, reference, children }: Props) {
             body={doc.revisions_included != null ? `แก้ไขได้ ${doc.revisions_included} รอบ (รอบเพิ่มเติมคิดค่าบริการแยก)` : null}
           />
           <Section title="เงื่อนไขการชำระเงิน" body={doc.payment_terms} />
-          <Section title="หมายเหตุ" body={doc.notes} />
+          <Section title={priced ? "หมายเหตุ" : "รายละเอียด / ลิงก์ไฟล์งาน"} body={doc.notes} />
         </div>
       )}
+
+      {!priced && <SignOff doc={doc} response={response ?? null} />}
     </Card>
   );
 }
@@ -177,6 +201,40 @@ export function TotalRow({
     <div className={`flex justify-between gap-4 ${strong ? "text-base font-semibold" : ""} ${muted ? "text-stone-500" : ""}`}>
       <dt>{label}</dt>
       <dd className="tabular-nums">{formatMoney(value)}</dd>
+    </div>
+  );
+}
+
+// Hand-over and sign-off lines; the client's side fills in from the portal.
+function SignOff({ doc, response }: { doc: DocumentRow; response: ClientResponse | null }) {
+  const signed = doc.status === "accepted";
+  return (
+    <div className="mt-8 grid gap-6 border-t border-stone-200 pt-6 text-sm sm:grid-cols-2">
+      <div>
+        <p className="mb-1 text-xs font-medium text-stone-500">ผู้ส่งมอบ</p>
+        <p className="font-medium">{doc.seller_snapshot?.legal_name}</p>
+        <p className="text-stone-600">วันที่ {formatDate(doc.issue_date)}</p>
+      </div>
+      <div>
+        <p className="mb-1 text-xs font-medium text-stone-500">ผู้ตรวจรับ</p>
+        {signed ? (
+          <>
+            <p className="font-medium">{response?.actor_name ?? doc.buyer_snapshot?.name}</p>
+            <p className="text-emerald-700">
+              ตรวจรับแล้ว {formatDate(doc.responded_at)}
+              {response?.actor === "client" && " ผ่านลิงก์ออนไลน์"}
+            </p>
+          </>
+        ) : doc.status === "rejected" ? (
+          <>
+            <p className="font-medium">{response?.actor_name ?? doc.buyer_snapshot?.name}</p>
+            <p className="text-amber-700">ขอแก้ไข {formatDate(doc.responded_at)}</p>
+            {response?.note && <p className="mt-1 whitespace-pre-line text-stone-600">“{response.note}”</p>}
+          </>
+        ) : (
+          <p className="text-stone-500">รอลูกค้าตรวจรับ</p>
+        )}
+      </div>
     </div>
   );
 }

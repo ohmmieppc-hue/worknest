@@ -17,15 +17,17 @@ const num = (v: string | null | undefined) => (v == null ? "" : String(Number(v)
 const emptyRow = (): Row => ({ key: crypto.randomUUID(), description: "", quantity: "1", unit: "", unit_price: "", discount_amount: "" });
 
 interface Props {
-  doc: DocumentRow & { type: "quotation" | "invoice" };
+  doc: DocumentRow & { type: "quotation" | "invoice" | "delivery_note" };
   items: DocumentItem[];
   clients: Pick<Client, "id" | "name">[];
   services: ServiceItem[];
 }
 
-// Draft editor shared by quotations and invoices.
+// Draft editor shared by quotations, invoices and delivery notes (which list
+// what is handed over, without prices).
 export function DocumentEditor({ doc, items, clients, services }: Props) {
   const isQuotation = doc.type === "quotation";
+  const isDelivery = doc.type === "delivery_note";
   const label = DOC_META[doc.type].label;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -104,8 +106,8 @@ ${s.description}` : s.name,
       description: r.description,
       quantity: r.quantity,
       unit: r.unit,
-      unit_price: r.unit_price,
-      discount_amount: r.discount_amount,
+      unit_price: isDelivery ? "0" : r.unit_price,
+      discount_amount: isDelivery ? "0" : r.discount_amount,
     })),
   });
 
@@ -154,7 +156,7 @@ ${s.description}` : s.name,
           <Field label="วันที่ออก">
             <input type="date" value={header.issue_date} onChange={set("issue_date")} className={inputClass} />
           </Field>
-          {isQuotation ? (
+          {isDelivery ? null : isQuotation ? (
             <Field label="ยืนราคาถึง">
               <input type="date" value={header.valid_until} onChange={set("valid_until")} className={inputClass} />
             </Field>
@@ -176,19 +178,23 @@ ${s.description}` : s.name,
 
       <Card className="overflow-hidden">
         <div className="border-b border-stone-200 px-4 py-3">
-          <h2 className="font-semibold">รายการ</h2>
+          <h2 className="font-semibold">{isDelivery ? "งานที่ส่งมอบ" : "รายการ"}</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className={`w-full text-sm ${isDelivery ? "min-w-[520px]" : "min-w-[720px]"}`}>
             <thead className="bg-stone-50 text-left text-xs text-stone-500">
               <tr>
                 <th className="w-8 px-2 py-2 font-medium">#</th>
                 <th className="px-2 py-2 font-medium">รายละเอียด</th>
                 <th className="w-20 px-2 py-2 text-right font-medium">จำนวน</th>
                 <th className="w-24 px-2 py-2 font-medium">หน่วย</th>
-                <th className="w-32 px-2 py-2 text-right font-medium">ราคา/หน่วย</th>
-                <th className="w-28 px-2 py-2 text-right font-medium">ส่วนลด</th>
-                <th className="w-32 px-2 py-2 text-right font-medium">จำนวนเงิน</th>
+                {!isDelivery && (
+                  <>
+                    <th className="w-32 px-2 py-2 text-right font-medium">ราคา/หน่วย</th>
+                    <th className="w-28 px-2 py-2 text-right font-medium">ส่วนลด</th>
+                    <th className="w-32 px-2 py-2 text-right font-medium">จำนวนเงิน</th>
+                  </>
+                )}
                 <th className="w-20 px-2 py-2" />
               </tr>
             </thead>
@@ -227,35 +233,39 @@ ${s.description}` : s.name,
                       className={inputClass}
                     />
                   </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      inputMode="decimal"
-                      value={r.unit_price}
-                      onChange={(e) => updateRow(r.key, { unit_price: e.target.value })}
-                      placeholder="0.00"
-                      aria-label="ราคาต่อหน่วย"
-                      className={`${inputClass} text-right`}
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      inputMode="decimal"
-                      value={r.discount_amount}
-                      onChange={(e) => updateRow(r.key, { discount_amount: e.target.value })}
-                      placeholder="0.00"
-                      aria-label="ส่วนลด"
-                      className={`${inputClass} text-right`}
-                    />
-                  </td>
-                  <td className="px-2 py-2 pt-4 text-right tabular-nums">
-                    {formatMoney(lineAmountCents(r) / 100)}
-                  </td>
+                  {!isDelivery && (
+                    <>
+                      <td className="px-2 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          inputMode="decimal"
+                          value={r.unit_price}
+                          onChange={(e) => updateRow(r.key, { unit_price: e.target.value })}
+                          placeholder="0.00"
+                          aria-label="ราคาต่อหน่วย"
+                          className={`${inputClass} text-right`}
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          inputMode="decimal"
+                          value={r.discount_amount}
+                          onChange={(e) => updateRow(r.key, { discount_amount: e.target.value })}
+                          placeholder="0.00"
+                          aria-label="ส่วนลด"
+                          className={`${inputClass} text-right`}
+                        />
+                      </td>
+                      <td className="px-2 py-2 pt-4 text-right tabular-nums">
+                        {formatMoney(lineAmountCents(r) / 100)}
+                      </td>
+                    </>
+                  )}
                   <td className="px-2 py-2 pt-3 whitespace-nowrap text-right">
                     <button
                       type="button"
@@ -294,7 +304,7 @@ ${s.description}` : s.name,
               <option value="">+ เพิ่มจากรายการบริการ…</option>
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} · {formatMoney(s.unit_price)}/{s.unit}
+                  {isDelivery ? s.name : `${s.name} · ${formatMoney(s.unit_price)}/${s.unit}`}
                 </option>
               ))}
             </select>
@@ -305,52 +315,54 @@ ${s.description}` : s.name,
           )}
         </div>
 
-        <div className="grid gap-6 border-t border-stone-200 bg-stone-50/60 p-4 sm:grid-cols-2">
-          <div className="grid grid-cols-2 gap-3 self-start">
-            <Field label="ส่วนลดท้ายบิล (บาท)">
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                inputMode="decimal"
-                value={header.discount_amount}
-                onChange={set("discount_amount")}
-                placeholder="0.00"
-                className={`${inputClass} text-right`}
-              />
-            </Field>
-            <Field label="หัก ณ ที่จ่าย (%)" hint="ค่าบริการทั่วไป 3%">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step="0.01"
-                inputMode="decimal"
-                value={header.wht_rate}
-                onChange={set("wht_rate")}
-                className={`${inputClass} text-right`}
-              />
-            </Field>
-          </div>
+        {!isDelivery && (
+          <div className="grid gap-6 border-t border-stone-200 bg-stone-50/60 p-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3 self-start">
+              <Field label="ส่วนลดท้ายบิล (บาท)">
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={header.discount_amount}
+                  onChange={set("discount_amount")}
+                  placeholder="0.00"
+                  className={`${inputClass} text-right`}
+                />
+              </Field>
+              <Field label="หัก ณ ที่จ่าย (%)" hint="ค่าบริการทั่วไป 3%">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={header.wht_rate}
+                  onChange={set("wht_rate")}
+                  className={`${inputClass} text-right`}
+                />
+              </Field>
+            </div>
 
-          <dl className="space-y-1.5 text-sm">
-            <TotalRow label="รวมเป็นเงิน" value={totals.subtotal} />
-            {totals.discount > 0 && <TotalRow label="ส่วนลด" value={-totals.discount} />}
-            <TotalRow label="ยอดรวมทั้งสิ้น" value={totals.total} strong />
-            {totals.wht > 0 && (
-              <>
-                <TotalRow label={`หัก ณ ที่จ่าย ${Number(header.wht_rate)}%`} value={-totals.wht} muted />
-                <TotalRow label="ยอดชำระสุทธิ" value={totals.payable} strong />
-              </>
-            )}
-            <p className="pt-1 text-right text-xs text-stone-500">({bahtText(totals.wht > 0 ? totals.payable : totals.total)})</p>
-            {totals.discountTooLarge && <p className="text-right text-xs text-red-600">ส่วนลดมากกว่ายอดรวม</p>}
-          </dl>
-        </div>
+            <dl className="space-y-1.5 text-sm">
+              <TotalRow label="รวมเป็นเงิน" value={totals.subtotal} />
+              {totals.discount > 0 && <TotalRow label="ส่วนลด" value={-totals.discount} />}
+              <TotalRow label="ยอดรวมทั้งสิ้น" value={totals.total} strong />
+              {totals.wht > 0 && (
+                <>
+                  <TotalRow label={`หัก ณ ที่จ่าย ${Number(header.wht_rate)}%`} value={-totals.wht} muted />
+                  <TotalRow label="ยอดชำระสุทธิ" value={totals.payable} strong />
+                </>
+              )}
+              <p className="pt-1 text-right text-xs text-stone-500">({bahtText(totals.wht > 0 ? totals.payable : totals.total)})</p>
+              {totals.discountTooLarge && <p className="text-right text-xs text-red-600">ส่วนลดมากกว่ายอดรวม</p>}
+            </dl>
+          </div>
+        )}
       </Card>
 
       <Card className="p-6">
-        <h2 className="mb-4 font-semibold">{isQuotation ? "ขอบเขตงานและเงื่อนไข" : "เงื่อนไขและหมายเหตุ"}</h2>
+        <h2 className="mb-4 font-semibold">{isQuotation ? "ขอบเขตงานและเงื่อนไข" : isDelivery ? "รายละเอียดการส่งมอบ" : "เงื่อนไขและหมายเหตุ"}</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {isQuotation && (
             <>
@@ -385,16 +397,24 @@ ${s.description}` : s.name,
               </Field>
             </>
           )}
-          <Field label="เงื่อนไขการชำระเงิน" className={isQuotation ? undefined : "sm:col-span-2"}>
-            <input
-              value={header.payment_terms}
-              onChange={set("payment_terms")}
-              placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน ส่วนที่เหลือเมื่อส่งมอบ"
+          {!isDelivery && (
+            <Field label="เงื่อนไขการชำระเงิน" className={isQuotation ? undefined : "sm:col-span-2"}>
+              <input
+                value={header.payment_terms}
+                onChange={set("payment_terms")}
+                placeholder="เช่น มัดจำ 50% ก่อนเริ่มงาน ส่วนที่เหลือเมื่อส่งมอบ"
+                className={inputClass}
+              />
+            </Field>
+          )}
+          <Field label={isDelivery ? "รายละเอียด / ลิงก์ไฟล์งาน" : "หมายเหตุ"} className="sm:col-span-2">
+            <textarea
+              rows={isDelivery ? 4 : 2}
+              value={header.notes}
+              onChange={set("notes")}
+              placeholder={isDelivery ? "เช่น ลิงก์ Google Drive ของไฟล์งาน, วิธีติดตั้ง, รหัสเข้าระบบที่ส่งแยก" : undefined}
               className={inputClass}
             />
-          </Field>
-          <Field label="หมายเหตุ" className="sm:col-span-2">
-            <textarea rows={2} value={header.notes} onChange={set("notes")} className={inputClass} />
           </Field>
         </div>
       </Card>

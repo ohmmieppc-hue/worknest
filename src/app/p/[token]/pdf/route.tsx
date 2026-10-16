@@ -15,6 +15,7 @@ export async function GET(request: NextRequest, { params }: RouteContext<"/p/[to
     balance: data.balance,
     payment: data.payment,
     reference: data.reference,
+    response: data.response,
   });
   const pdf = await renderToBuffer(<DocumentPdf doc={data.document} items={data.items} extras={extras} />);
   return pdfResponse(pdf, data.document.number, "document", !!request.nextUrl.searchParams.get("download"));

@@ -1,5 +1,5 @@
-import { clientStatusLabel, documentStatusLabel } from "@/lib/format";
-import type { ClientStatus, DocumentStatus } from "@/lib/types";
+import { clientStatusLabel, statusLabel } from "@/lib/format";
+import type { ClientStatus, DocumentStatus, DocumentType } from "@/lib/types";
 
 const documentTone: Record<DocumentStatus, string> = {
   draft: "bg-stone-100 text-stone-700",
@@ -20,8 +20,9 @@ const clientTone: Record<ClientStatus, string> = {
 
 const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
 
-export function DocumentStatusBadge({ status }: { status: DocumentStatus }) {
-  return <span className={`${base} ${documentTone[status]}`}>{documentStatusLabel[status]}</span>;
+export function DocumentStatusBadge({ status, type }: { status: DocumentStatus; type?: DocumentType }) {
+  const tone = type === "delivery_note" && status === "rejected" ? "bg-amber-50 text-amber-800" : documentTone[status];
+  return <span className={`${base} ${tone}`}>{statusLabel(status, type)}</span>;
 }
 
 export type PaymentStatus = "unpaid" | "partially_paid" | "paid";

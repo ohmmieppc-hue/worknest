@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/dashboard", label: "ภาพรวม" },
   { href: "/quotations", label: "ใบเสนอราคา" },
   { href: "/invoices", label: "ใบแจ้งหนี้" },
+  { href: "/delivery-notes", label: "ส่งมอบงาน" },
   { href: "/clients", label: "ลูกค้า" },
   { href: "/services", label: "บริการ" },
   { href: "/settings", label: "ตั้งค่า" },

@@ -9,7 +9,7 @@ import { docPath, type ActionResult, type DraftPayload } from "@/lib/documents";
 import type { DocumentItem, DocumentRow, DocumentStatus, DocumentType, Workspace } from "@/lib/types";
 
 type Supabase = Awaited<ReturnType<typeof requireWorkspace>>["supabase"];
-type EditableType = Extract<DocumentType, "quotation" | "invoice">;
+type EditableType = Extract<DocumentType, "quotation" | "invoice" | "delivery_note">;
 
 function validate({ header, items }: DraftPayload, forIssue: boolean): string | null {
   if (!header.client_id) return "เลือกลูกค้า";
@@ -224,6 +224,53 @@ export async function duplicateDocumentAction(type: EditableType, id: string): P
 
   revalidatePath(docPath(type));
   redirect(docPath(type, created.id));
+}
+
+// Delivers work for an accepted quotation: lists what is handed over, without
+// prices, for the client to sign off in the portal.
+export async function createDeliveryNoteFromQuotationAction(quotationId: string): Promise<ActionResult> {
+  const { supabase, workspace } = await requireWorkspace();
+  const [{ data: src }, { data: srcItems }] = await Promise.all([
+    supabase.from("documents").select("*").eq("id", quotationId).eq("type", "quotation").single(),
+    supabase.from("document_items").select("*").eq("document_id", quotationId).order("sort_order"),
+  ]);
+  if (!src) return { error: "ไม่พบใบเสนอราคา" };
+  const quote = src as DocumentRow;
+  if (quote.status !== "accepted") return { error: "สร้างใบส่งมอบงานได้เมื่อลูกค้าตอบรับใบเสนอราคาแล้ว" };
+
+  const { data: created, error } = await supabase
+    .from("documents")
+    .insert({
+      workspace_id: workspace.id,
+      type: "delivery_note",
+      client_id: quote.client_id,
+      project_id: quote.project_id,
+      source_document_id: quote.id,
+    })
+    .select("id")
+    .single();
+  if (error) return { error: toThaiError(error) };
+
+  const saved = await saveDraft(supabase, created.id, {
+    header: {
+      ...defaultDates("delivery_note", workspace),
+      client_id: quote.client_id,
+      title: quote.title ?? "",
+      discount_amount: "0",
+      wht_rate: "0",
+      scope_of_work: "",
+      exclusions: "",
+      revisions_included: "",
+      payment_terms: "",
+      notes: "",
+    },
+    items: toDraftItems((srcItems ?? []) as DocumentItem[]).map((i) => ({ ...i, unit_price: "0", discount_amount: "0" })),
+  });
+  if (saved.error) return { error: toThaiError(saved.error) };
+
+  revalidatePath(docPath("delivery_note"));
+  revalidatePath(docPath("quotation", quote.id));
+  redirect(docPath("delivery_note", created.id));
 }
 
 // Bills an accepted quotation: in full (copies every line) or as one

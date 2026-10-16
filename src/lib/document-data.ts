@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/workspace";
-import type { Client, DocumentItem, DocumentRow, DocumentType, ServiceItem } from "@/lib/types";
+import type { createClient } from "@/lib/supabase/server";
+import type { Client, ClientResponse, DocumentItem, DocumentRow, DocumentType, ServiceItem } from "@/lib/types";
 
 export async function loadDocument(type: DocumentType, id: string) {
   const { supabase } = await requireWorkspace();
@@ -10,6 +11,25 @@ export async function loadDocument(type: DocumentType, id: string) {
   ]);
   if (!docData) notFound();
   return { supabase, doc: docData as DocumentRow, items: (itemData ?? []) as DocumentItem[] };
+}
+
+// The latest accept / reject event: who signed off (or asked for changes) and why.
+export async function loadClientResponse(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  doc: Pick<DocumentRow, "id" | "status">,
+): Promise<ClientResponse | null> {
+  if (doc.status !== "accepted" && doc.status !== "rejected") return null;
+  const { data } = await supabase
+    .from("document_events")
+    .select("actor, actor_name, created_at, metadata")
+    .eq("document_id", doc.id)
+    .eq("event", doc.status)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const { metadata, ...rest } = data as Omit<ClientResponse, "note"> & { metadata: { note?: string } | null };
+  return { ...rest, note: metadata?.note ?? null };
 }
 
 // Active clients plus the document's own client, even if it was archived since.

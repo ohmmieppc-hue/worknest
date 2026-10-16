@@ -433,6 +433,21 @@ create table document_events (
 );
 create index document_events_document_idx on document_events (document_id, created_at);
 
+-- Revision rounds used on an accepted quotation, counted against its
+-- revisions_included. Logged by the owner, or by the client when they ask for
+-- changes on a delivery note that bills that quotation.
+create table document_revisions (
+  id            uuid primary key default gen_random_uuid(),
+  workspace_id  uuid not null references workspaces(id) on delete cascade,
+  document_id   uuid not null,
+  note          text not null check (length(trim(note)) between 1 and 1000),
+  requested_by  event_actor not null default 'owner',
+  created_by    uuid references auth.users(id) on delete set null,
+  created_at    timestamptz not null default now(),
+  foreign key (document_id, workspace_id) references documents(id, workspace_id) on delete cascade
+);
+create index document_revisions_document_idx on document_revisions (document_id, created_at);
+
 -- -----------------------------------------------------------------------------
 -- Notification log (idempotent sends)
 -- -----------------------------------------------------------------------------
@@ -577,6 +592,9 @@ begin
       'phone',          v_ws.phone,
       'email',          v_ws.email,
       'logo_file_id',   v_ws.logo_file_id,
+      -- Path in the public "logos" bucket, frozen so a later logo change
+      -- never alters an issued document.
+      'logo_path',      (select f.storage_path from files f where f.id = v_ws.logo_file_id),
       'promptpay_id',   v_ws.promptpay_id,
       'bank_accounts',  v_ws.bank_accounts,
       'vat_registered', v_ws.vat_registered);
@@ -746,6 +764,21 @@ create trigger document_events_append_only
   before update or delete on document_events
   for each row execute function document_events_append_only();
 
+-- Revisions only make sense once the client has accepted the quotation.
+create function document_revisions_guard() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if not exists (select 1 from documents d
+                 where d.id = new.document_id and d.type = 'quotation' and d.status = 'accepted') then
+    raise exception 'revisions can only be logged on an accepted quotation';
+  end if;
+  return new;
+end $$;
+
+create trigger document_revisions_guard
+  before insert on document_revisions
+  for each row execute function document_revisions_guard();
+
 -- Replace a draft's header fields and line items in one transaction.
 -- SECURITY INVOKER: RLS still applies to every statement.
 -- p_header keys: client_id, title, issue_date, valid_until, due_date,
@@ -862,6 +895,8 @@ declare
   v_balance  jsonb;
   v_payment  jsonb;
   v_ref      text;
+  v_revs     jsonb;
+  v_response jsonb;
 begin
   v_link := portal_link(p_token);
   if v_link.id is null then
@@ -885,13 +920,26 @@ begin
       into v_payment from payments p where p.receipt_id = v_doc.id;
   end if;
   select number into v_ref from documents where id = v_doc.source_document_id;
+  if v_doc.type = 'quotation' then
+    select coalesce(jsonb_agg(jsonb_build_object('note', r.note, 'requested_by', r.requested_by, 'created_at', r.created_at)
+                              order by r.created_at), '[]'::jsonb)
+      into v_revs from document_revisions r where r.document_id = v_doc.id;
+  end if;
+  if v_doc.status in ('accepted', 'rejected') then
+    select jsonb_build_object('actor', e.actor, 'actor_name', e.actor_name, 'created_at', e.created_at, 'note', e.metadata ->> 'note')
+      into v_response from document_events e
+     where e.document_id = v_doc.id and e.event = v_doc.status::text
+     order by e.created_at desc limit 1;
+  end if;
 
   return jsonb_build_object(
     'document',  to_jsonb(v_doc) - 'workspace_id' - 'created_by' - 'project_id' - 'replaces_document_id',
     'items',     v_items,
     'balance',   v_balance,
     'payment',   v_payment,
-    'reference', v_ref);
+    'reference', v_ref,
+    'revisions', v_revs,
+    'response',  v_response);
 end $$;
 
 -- Called when the client opens the link: sent → viewed, plus an evidence row.
@@ -909,7 +957,7 @@ begin
   update share_links set last_accessed_at = now() where id = v_link.id;
 
   select * into v_doc from documents where id = v_link.document_id for update;
-  if v_doc.type in ('quotation', 'invoice') and v_doc.status = 'sent' then
+  if v_doc.type in ('quotation', 'invoice', 'delivery_note') and v_doc.status = 'sent' then
     update documents set status = 'viewed' where id = v_doc.id;
     insert into document_events (workspace_id, document_id, event, actor, ip, user_agent)
     values (v_doc.workspace_id, v_doc.id, 'viewed', 'client',
@@ -919,14 +967,19 @@ begin
   return false;
 end $$;
 
--- Client accepts or rejects a quotation. Returns the new status.
-create function portal_respond(p_token text, p_accept boolean, p_name text, p_ip text, p_user_agent text)
+-- The client answers a quotation (accept / reject) or a delivery note
+-- (sign off / ask for changes). Asking for changes on a delivery note needs a
+-- note and is logged as a revision round on the quotation it delivers.
+-- Returns the new status.
+create function portal_respond(p_token text, p_accept boolean, p_name text, p_ip text, p_user_agent text,
+                               p_note text default null)
 returns document_status
 language plpgsql security definer set search_path = public as $$
 declare
   v_link   share_links;
   v_doc    documents%rowtype;
   v_status document_status := case when p_accept then 'accepted' else 'rejected' end;
+  v_note   text := nullif(left(trim(coalesce(p_note, '')), 1000), '');
 begin
   v_link := portal_link(p_token);
   if v_link.id is null then
@@ -937,20 +990,31 @@ begin
   end if;
 
   select * into v_doc from documents where id = v_link.document_id for update;
-  if v_doc.type <> 'quotation' then
-    raise exception 'only quotations can be accepted or rejected';
+  if v_doc.type not in ('quotation', 'delivery_note') then
+    raise exception 'only quotations and delivery notes can be accepted or rejected';
   end if;
   if v_doc.status not in ('issued', 'sent', 'viewed') then
-    raise exception 'quotation already %', v_doc.status;
+    raise exception '% already %', v_doc.type, v_doc.status;
   end if;
-  if v_doc.valid_until < current_date then
+  if v_doc.type = 'quotation' and v_doc.valid_until < current_date then
     raise exception 'quotation expired';
+  end if;
+  if v_doc.type = 'delivery_note' and not p_accept and v_note is null then
+    raise exception 'note is required';
   end if;
 
   update documents set status = v_status where id = v_doc.id;
-  insert into document_events (workspace_id, document_id, event, actor, actor_name, ip, user_agent)
+  insert into document_events (workspace_id, document_id, event, actor, actor_name, ip, user_agent, metadata)
   values (v_doc.workspace_id, v_doc.id, v_status::text, 'client', left(trim(p_name), 200),
-          case when p_ip ~ '^[0-9a-fA-F:.]+$' then p_ip::inet end, left(p_user_agent, 500));
+          case when p_ip ~ '^[0-9a-fA-F:.]+$' then p_ip::inet end, left(p_user_agent, 500),
+          case when v_note is null then '{}'::jsonb else jsonb_build_object('note', v_note) end);
+
+  if v_doc.type = 'delivery_note' and not p_accept and exists (
+       select 1 from documents q where q.id = v_doc.source_document_id and q.type = 'quotation' and q.status = 'accepted') then
+    insert into document_revisions (workspace_id, document_id, note, requested_by)
+    values (v_doc.workspace_id, v_doc.source_document_id,
+            left(format('ขอแก้ไขจากใบส่งมอบงาน %s: %s', v_doc.number, v_note), 1000), 'client');
+  end if;
   return v_status;
 end $$;
 
@@ -1177,6 +1241,15 @@ create policy document_events_member_select on document_events
 create policy document_events_member_insert on document_events
   for insert to authenticated with check (is_workspace_member(workspace_id));
 
+-- Revisions: members log and remove them; notes are never edited.
+alter table document_revisions enable row level security;
+create policy document_revisions_member_select on document_revisions
+  for select to authenticated using (is_workspace_member(workspace_id));
+create policy document_revisions_member_insert on document_revisions
+  for insert to authenticated with check (is_workspace_member(workspace_id));
+create policy document_revisions_member_delete on document_revisions
+  for delete to authenticated using (is_workspace_member(workspace_id));
+
 -- Written by the backend (service role); members may read.
 alter table notification_log enable row level security;
 create policy notification_log_member_select on notification_log
@@ -1192,6 +1265,7 @@ revoke execute on function expire_quotations() from public, anon, authenticated;
 
 -- Trigger functions are never called directly (EXECUTE is only checked at CREATE TRIGGER).
 revoke execute on function documents_before_write() from public, anon, authenticated;
+revoke execute on function document_revisions_guard() from public, anon, authenticated;
 -- Needed by RLS policies for signed-in users only.
 revoke execute on function is_workspace_member(uuid) from public, anon;
 grant  execute on function is_workspace_member(uuid) to authenticated;
@@ -1213,10 +1287,10 @@ alter function issue_receipt_for_payment(uuid) set search_path = public;
 revoke execute on function portal_link(text) from public, anon, authenticated;
 revoke execute on function portal_get_document(text) from public;
 revoke execute on function portal_record_view(text, text, text) from public;
-revoke execute on function portal_respond(text, boolean, text, text, text) from public;
+revoke execute on function portal_respond(text, boolean, text, text, text, text) from public;
 grant execute on function portal_get_document(text) to anon, authenticated;
 grant execute on function portal_record_view(text, text, text) to anon, authenticated;
-grant execute on function portal_respond(text, boolean, text, text, text) to anon, authenticated;
+grant execute on function portal_respond(text, boolean, text, text, text, text) to anon, authenticated;
 
 -- Notifications: secret-gated entry points are callable; helpers are not.
 revoke execute on function notify_secret_ok(text) from public, anon, authenticated;
@@ -1241,6 +1315,13 @@ alter function dashboard_summary(uuid) set search_path = public;
 -- current_date drives issue_date defaults, overdue checks and quotation
 -- expiry, so it must be the Thai calendar day (run once per database):
 --   alter database postgres set timezone to 'Asia/Bangkok';
+
+-- Storage (Supabase): public "logos" bucket, writable only by workspace members
+-- under their own <workspace_id>/ folder (see migration storage_logos):
+--   insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+--   values ('logos', 'logos', true, 1048576, array['image/png', 'image/jpeg']);
+--   + insert/delete policies on storage.objects checking
+--     is_workspace_member(((storage.foldername(name))[1])::uuid)
 
 -- Storage (Supabase): private bucket "workspace-files"; policies on
 -- storage.objects should require is_workspace_member(<first path segment>::uuid).

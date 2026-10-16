@@ -3,6 +3,7 @@
 const RULES: [RegExp, string][] = [
   [/without line items/, "ต้องมีรายการอย่างน้อย 1 รายการก่อนออกเอกสาร"],
   [/void it and issue a new one|void it instead/, "เอกสารนี้ออกแล้ว แก้ไขหรือลบไม่ได้ ต้องยกเลิกแล้วออกฉบับใหม่"],
+  [/revisions can only be logged/, "บันทึกรอบแก้ไขได้เฉพาะใบเสนอราคาที่ลูกค้าตอบรับแล้ว"],
   [/invalid status transition/, "เปลี่ยนสถานะเอกสารแบบนี้ไม่ได้"],
   [/VAT-registered/, "คิด VAT ได้เฉพาะเมื่อจดทะเบียนภาษีมูลค่าเพิ่มแล้ว"],
   [/documents_discount_le_subtotal/, "ส่วนลดท้ายบิลมากกว่ายอดรวม"],

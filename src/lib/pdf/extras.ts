@@ -1,7 +1,8 @@
 import QRCode from "qrcode";
 import { amountsDue } from "@/lib/payments";
+import { logoUrl, sniffImageType } from "@/lib/logo";
 import { promptPayPayload } from "@/lib/promptpay";
-import type { DocumentRow, InvoiceBalance, Payment } from "@/lib/types";
+import type { ClientResponse, DocumentRow, InvoiceBalance, Payment } from "@/lib/types";
 import type { PdfExtras } from "./document-pdf";
 
 type SellerWithPayment = NonNullable<DocumentRow["seller_snapshot"]> & {
@@ -16,13 +17,15 @@ export async function buildPdfExtras({
   balance,
   payment,
   reference,
+  response = null,
 }: {
   doc: DocumentRow;
   balance: Pick<InvoiceBalance, "outstanding" | "wht_withheld" | "settled"> | null;
   payment: Pick<Payment, "received_on" | "cash_amount" | "wht_amount" | "method" | "reference"> | null;
   reference: string | null;
+  response?: ClientResponse | null;
 }): Promise<PdfExtras> {
-  const extras: PdfExtras = { reference, payment: payment as Payment | null };
+  const extras: PdfExtras = { reference, payment: payment as Payment | null, response, logo: await fetchLogo(doc) };
 
   if (doc.type === "invoice" && doc.status !== "void" && balance) {
     const due = amountsDue(doc, balance);
@@ -39,6 +42,21 @@ export async function buildPdfExtras({
     }
   }
   return extras;
+}
+
+// Fetched up front so a missing or broken logo never fails the whole PDF.
+async function fetchLogo(doc: DocumentRow): Promise<PdfExtras["logo"]> {
+  const url = logoUrl(doc.seller_snapshot?.logo_path);
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const data = Buffer.from(await res.arrayBuffer());
+    const mime = sniffImageType(data);
+    return mime ? { data, format: mime === "image/png" ? "png" : "jpg" } : null;
+  } catch {
+    return null;
+  }
 }
 
 export function pdfResponse(pdf: Buffer, number: string | null, fallbackName: string, download: boolean) {

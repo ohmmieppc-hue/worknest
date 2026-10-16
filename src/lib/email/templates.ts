@@ -44,13 +44,26 @@ const eventHeading: Record<ClientEvent, (label: string) => string> = {
   rejected: (label) => `ลูกค้าปฏิเสธ${label}`,
 };
 
-export function clientEventEmail(ctx: DocumentContext, event: ClientEvent, actorName?: string | null) {
+// Delivery notes are signed off or sent back for changes, not accepted/rejected.
+const deliveryHeading: Record<ClientEvent, string> = {
+  viewed: "ลูกค้าเปิดดูใบส่งมอบงานแล้ว",
+  accepted: "ลูกค้าตรวจรับงานแล้ว",
+  rejected: "ลูกค้าขอแก้ไขงาน",
+};
+
+export function clientEventEmail(ctx: DocumentContext, event: ClientEvent, actorName?: string | null, note?: string | null) {
   const label = DOC_META[ctx.type].label;
-  const heading = eventHeading[event](label);
+  const isDelivery = ctx.type === "delivery_note";
+  const heading = isDelivery ? deliveryHeading[event] : eventHeading[event](label);
   const subject = `${heading}: ${ctx.number ?? ""} · ${ctx.client_name}`;
   const who = actorName ? ` (โดย ${actorName})` : "";
-  const next =
-    event === "accepted"
+  const next = isDelivery
+    ? event === "accepted"
+      ? "ขั้นต่อไป: ออกใบแจ้งหนี้งวดสุดท้ายได้จากหน้าใบเสนอราคา"
+      : event === "rejected"
+        ? "แก้งานตามที่ลูกค้าขอ แล้วคัดลอกใบส่งมอบงานเป็นฉบับใหม่เพื่อส่งรอบถัดไป (ระบบนับเป็นรอบแก้ไขในใบเสนอราคาแล้ว)"
+        : ""
+    : event === "accepted"
       ? "ขั้นต่อไป: สร้างใบแจ้งหนี้มัดจำหรือเต็มจำนวนได้จากหน้าใบเสนอราคา"
       : event === "rejected"
         ? "ลองติดต่อลูกค้าเพื่อสอบถามเหตุผล หรือคัดลอกเป็นฉบับใหม่เพื่อปรับราคา"
@@ -58,7 +71,8 @@ export function clientEventEmail(ctx: DocumentContext, event: ClientEvent, actor
   const lines = [
     `${label} <strong>${esc(ctx.number ?? "")}</strong>${ctx.title ? ` · ${esc(ctx.title)}` : ""}`,
     `ลูกค้า: ${esc(ctx.client_name)}${esc(who)}`,
-    `ยอดรวม: ${formatMoney(ctx.total)} บาท`,
+    ...(isDelivery ? [] : [`ยอดรวม: ${formatMoney(ctx.total)} บาท`]),
+    ...(note ? [`สิ่งที่ขอแก้ไข: ${esc(note)}`] : []),
   ];
   const html = layout(
     heading,

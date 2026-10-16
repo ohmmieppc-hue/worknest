@@ -35,6 +35,7 @@ export interface Workspace {
   default_quote_valid_days: number;
   default_credit_days: number;
   default_wht_rate: string;
+  logo_file_id: string | null;
 }
 
 export interface Client {
@@ -63,6 +64,8 @@ export interface PartySnapshot {
   address: string | null;
   phone: string | null;
   email: string | null;
+  // Seller only: path in the public "logos" bucket, frozen at issue.
+  logo_path?: string | null;
 }
 
 // numeric columns arrive as strings from PostgREST.
@@ -153,4 +156,19 @@ export interface DocumentItem {
   unit_price: string;
   discount_amount: string;
   amount: string;
+}
+
+/** The client's answer to a quotation or delivery note (latest accept/reject event). */
+export interface ClientResponse {
+  actor: "owner" | "client" | "system";
+  actor_name: string | null;
+  created_at: string;
+  note: string | null;
+}
+
+export interface DocumentRevision {
+  id?: string;
+  note: string;
+  requested_by: "owner" | "client" | "system";
+  created_at: string;
 }

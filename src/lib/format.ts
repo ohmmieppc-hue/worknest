@@ -1,4 +1,4 @@
-import type { ClientKind, ClientStatus, DocumentStatus } from "@/lib/types";
+import type { ClientKind, ClientStatus, DocumentStatus, DocumentType } from "@/lib/types";
 
 const money = new Intl.NumberFormat("th-TH", {
   minimumFractionDigits: 2,
@@ -44,6 +44,13 @@ export const documentStatusLabel: Record<DocumentStatus, string> = {
   expired: "หมดอายุ",
   void: "ยกเลิก",
 };
+
+// Delivery notes are signed off rather than "accepted".
+export function statusLabel(status: DocumentStatus, type?: DocumentType) {
+  if (type === "delivery_note" && status === "accepted") return "ตรวจรับแล้ว";
+  if (type === "delivery_note" && status === "rejected") return "ขอแก้ไข";
+  return documentStatusLabel[status];
+}
 
 export const clientStatusLabel: Record<ClientStatus, string> = {
   lead: "Lead",

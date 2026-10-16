@@ -5,7 +5,7 @@ import { bahtText } from "@/lib/bahttext";
 import { DOC_META } from "@/lib/documents";
 import { formatDate, formatMoney } from "@/lib/format";
 import { paymentMethodLabel } from "@/lib/payments";
-import type { DocumentItem, DocumentRow, PartySnapshot, Payment } from "@/lib/types";
+import type { ClientResponse, DocumentItem, DocumentRow, PartySnapshot, Payment } from "@/lib/types";
 
 const FONT_DIR = path.join(process.cwd(), "assets", "fonts");
 
@@ -71,6 +71,7 @@ const s = StyleSheet.create({
   title: { fontSize: 18, fontWeight: 600, textAlign: "right", lineHeight: 1.6, marginBottom: 2 },
   subtitle: { fontSize: 9, color: muted, textAlign: "right", letterSpacing: 1, lineHeight: 1.2 },
   docHead: { alignItems: "flex-end" },
+  logo: { maxHeight: 48, maxWidth: 160, objectFit: "contain", objectPosition: "left", marginBottom: 8 },
   section: { borderBottomWidth: 1, borderBottomColor: line, paddingBottom: 14, marginBottom: 14 },
   th: { fontSize: 8.5, color: muted, fontWeight: 600, paddingVertical: 5 },
   td: { paddingVertical: 5 },
@@ -92,12 +93,18 @@ export interface PdfExtras {
   /** Receipt: the payment it settles. */
   payment?: Payment | null;
   /** Invoice: cash still to transfer, with an optional PromptPay QR (data URL). */
+  /** Delivery notes: the client's sign-off or change request. */
+  response?: ClientResponse | null;
+  /** Seller logo from the snapshot, already downloaded. */
+  logo?: { data: Buffer; format: "png" | "jpg" } | null;
   due?: { cashDue: number; paid: number; qr: string | null; promptpay: string | null; banks: { bank: string; account_no: string; account_name: string }[] } | null;
 }
 
 export function DocumentPdf({ doc, items, extras }: { doc: DocumentRow; items: DocumentItem[]; extras: PdfExtras }) {
   const meta = DOC_META[doc.type];
   const hasWht = Number(doc.wht_amount) > 0;
+  // Delivery notes list what is handed over; prices stay on the quotation.
+  const priced = doc.type !== "delivery_note";
 
   return (
     <Document title={`${meta.label} ${doc.number}`} author={doc.seller_snapshot?.legal_name ?? undefined} creator="WorkNest" producer="WorkNest">
@@ -105,7 +112,11 @@ export function DocumentPdf({ doc, items, extras }: { doc: DocumentRow; items: D
         {doc.status === "void" && <Text style={s.stamp}>ยกเลิก</Text>}
 
         <View style={[s.between, s.section]}>
-          <Party label="ผู้ให้บริการ" party={doc.seller_snapshot} />
+          <View style={{ maxWidth: 260 }}>
+            {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt */}
+            {extras.logo && <Image src={extras.logo} style={s.logo} />}
+            <Party label="ผู้ให้บริการ" party={doc.seller_snapshot} />
+          </View>
           <View style={s.docHead}>
             <Text style={s.title}>{meta.label}</Text>
             <Text style={s.subtitle}>{meta.english}</Text>
@@ -132,41 +143,51 @@ export function DocumentPdf({ doc, items, extras }: { doc: DocumentRow; items: D
         {/* Items */}
         <View style={[s.row, { borderBottomWidth: 1, borderBottomColor: "#c9c9c4" }]} fixed>
           <Text style={[s.th, { width: col.no }]}>#</Text>
-          <Text style={[s.th, { width: col.desc }]}>รายละเอียด</Text>
+          <Text style={[s.th, { width: priced ? col.desc : "83%" }]}>รายละเอียด</Text>
           <Text style={[s.th, s.num, { width: col.qty }]}>จำนวน</Text>
-          <Text style={[s.th, s.num, { width: col.price }]}>ราคา/หน่วย</Text>
-          <Text style={[s.th, s.num, { width: col.disc }]}>ส่วนลด</Text>
-          <Text style={[s.th, s.num, { width: col.amount }]}>จำนวนเงิน</Text>
+          {priced && (
+            <>
+              <Text style={[s.th, s.num, { width: col.price }]}>ราคา/หน่วย</Text>
+              <Text style={[s.th, s.num, { width: col.disc }]}>ส่วนลด</Text>
+              <Text style={[s.th, s.num, { width: col.amount }]}>จำนวนเงิน</Text>
+            </>
+          )}
         </View>
         {items.map((i, index) => (
           <View key={i.id} style={[s.row, { borderBottomWidth: 0.5, borderBottomColor: line }]} wrap={false}>
             <Text style={[s.td, s.muted, { width: col.no }]}>{index + 1}</Text>
-            <Text style={[s.td, { width: col.desc, paddingRight: 8 }]}>{i.description}</Text>
+            <Text style={[s.td, { width: priced ? col.desc : "83%", paddingRight: 8 }]}>{i.description}</Text>
             <Text style={[s.td, s.num, { width: col.qty }]}>
               {Number(i.quantity).toLocaleString("th-TH")} {i.unit ?? ""}
             </Text>
-            <Text style={[s.td, s.num, { width: col.price }]}>{formatMoney(i.unit_price)}</Text>
-            <Text style={[s.td, s.num, { width: col.disc }]}>{Number(i.discount_amount) ? formatMoney(i.discount_amount) : "-"}</Text>
-            <Text style={[s.td, s.num, { width: col.amount }]}>{formatMoney(i.amount)}</Text>
+            {priced && (
+              <>
+                <Text style={[s.td, s.num, { width: col.price }]}>{formatMoney(i.unit_price)}</Text>
+                <Text style={[s.td, s.num, { width: col.disc }]}>{Number(i.discount_amount) ? formatMoney(i.discount_amount) : "-"}</Text>
+                <Text style={[s.td, s.num, { width: col.amount }]}>{formatMoney(i.amount)}</Text>
+              </>
+            )}
           </View>
         ))}
 
         {/* Totals */}
-        <View style={[s.between, { marginTop: 12 }]} wrap={false}>
-          <Text style={[s.muted, { width: 250, alignSelf: "flex-end" }]}>({bahtText(hasWht ? doc.amount_payable : doc.total)})</Text>
-          <View style={s.totals}>
-            <TotalRow label="รวมเป็นเงิน" value={doc.subtotal} />
-            {Number(doc.discount_amount) > 0 && <TotalRow label="ส่วนลด" value={-Number(doc.discount_amount)} />}
-            {Number(doc.vat_amount) > 0 && <TotalRow label={`ภาษีมูลค่าเพิ่ม ${Number(doc.vat_rate)}%`} value={doc.vat_amount} />}
-            <TotalRow label="ยอดรวมทั้งสิ้น" value={doc.total} grand />
-            {hasWht && (
-              <>
-                <TotalRow label={`หัก ณ ที่จ่าย ${Number(doc.wht_rate)}%`} value={-Number(doc.wht_amount)} muted />
-                <TotalRow label="ยอดชำระสุทธิ" value={doc.amount_payable} grand />
-              </>
-            )}
+        {priced && (
+          <View style={[s.between, { marginTop: 12 }]} wrap={false}>
+            <Text style={[s.muted, { width: 250, alignSelf: "flex-end" }]}>({bahtText(hasWht ? doc.amount_payable : doc.total)})</Text>
+            <View style={s.totals}>
+              <TotalRow label="รวมเป็นเงิน" value={doc.subtotal} />
+              {Number(doc.discount_amount) > 0 && <TotalRow label="ส่วนลด" value={-Number(doc.discount_amount)} />}
+              {Number(doc.vat_amount) > 0 && <TotalRow label={`ภาษีมูลค่าเพิ่ม ${Number(doc.vat_rate)}%`} value={doc.vat_amount} />}
+              <TotalRow label="ยอดรวมทั้งสิ้น" value={doc.total} grand />
+              {hasWht && (
+                <>
+                  <TotalRow label={`หัก ณ ที่จ่าย ${Number(doc.wht_rate)}%`} value={-Number(doc.wht_amount)} muted />
+                  <TotalRow label="ยอดชำระสุทธิ" value={doc.amount_payable} grand />
+                </>
+              )}
+            </View>
           </View>
-        </View>
+        )}
 
         {extras.payment && (
           <View style={[s.box, s.between]} wrap={false}>
@@ -216,6 +237,7 @@ export function DocumentPdf({ doc, items, extras }: { doc: DocumentRow; items: D
         <Terms doc={doc} />
 
         {(doc.type === "quotation" || doc.type === "receipt") && <Signatures type={doc.type} />}
+        {doc.type === "delivery_note" && <DeliverySignOff doc={doc} response={extras.response ?? null} />}
 
         <View style={s.footer} fixed>
           <Text>
@@ -273,7 +295,7 @@ function Terms({ doc }: { doc: DocumentRow }) {
     ["สิ่งที่ไม่รวมในราคา", doc.exclusions],
     ["จำนวนรอบแก้ไข", doc.revisions_included != null ? `แก้ไขได้ ${doc.revisions_included} รอบ (รอบเพิ่มเติมคิดค่าบริการแยก)` : null],
     ["เงื่อนไขการชำระเงิน", doc.payment_terms],
-    ["หมายเหตุ", doc.notes],
+    [doc.type === "delivery_note" ? "รายละเอียด / ลิงก์ไฟล์งาน" : "หมายเหตุ", doc.notes],
   ];
   const filled = sections.filter(([, body]) => body);
   if (filled.length === 0) return null;
@@ -285,6 +307,38 @@ function Terms({ doc }: { doc: DocumentRow }) {
           <Text style={s.muted}>{body}</Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+// Signature lines, plus the online sign-off when the client answered in the portal.
+function DeliverySignOff({ doc, response }: { doc: DocumentRow; response: ClientResponse | null }) {
+  const answered = doc.status === "accepted" || doc.status === "rejected";
+  return (
+    <View style={{ marginTop: 28 }} wrap={false}>
+      {answered && (
+        <View style={[s.box, { marginTop: 0, marginBottom: 16 }]}>
+          <Text style={s.bold}>
+            {doc.status === "accepted" ? "ลูกค้าตรวจรับงานแล้ว" : "ลูกค้าขอแก้ไขงาน"} {formatDate(doc.responded_at)}
+          </Text>
+          {response?.actor_name && (
+            <Text style={s.muted}>
+              โดย {response.actor_name}
+              {response.actor === "client" ? " (ยืนยันผ่านลิงก์ออนไลน์)" : ""}
+            </Text>
+          )}
+          {response?.note && <Text style={s.muted}>“{response.note}”</Text>}
+        </View>
+      )}
+      <View style={s.between}>
+        {["ผู้ส่งมอบ", "ผู้ตรวจรับ (ลูกค้า)"].map((label) => (
+          <View key={label} style={{ width: 200, alignItems: "center" }}>
+            <View style={{ borderBottomWidth: 0.75, borderBottomColor: ink, width: 180, height: 28 }} />
+            <Text style={{ marginTop: 4 }}>{label}</Text>
+            <Text style={[s.muted, { fontSize: 8.5 }]}>วันที่ ........./........./.........</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

@@ -45,7 +45,8 @@ node db/schema.test.mjs db/schema.sql
 | `src/app/(app)/quotations` | ใบเสนอราคา: ร่าง → ออกเลขที่ → ส่ง → ตอบรับ / ปฏิเสธ / ยกเลิก |
 | `src/app/(app)/invoices` | ใบแจ้งหนี้ (สร้างจากใบเสนอราคาเต็มจำนวนหรือแบ่งงวด), บันทึกรับเงิน, 50 ทวิ, QR พร้อมเพย์ |
 | `src/app/(app)/receipts` | ใบเสร็จรับเงิน ออกจากการรับเงินแต่ละครั้ง |
-| `src/app/(app)/settings` | ข้อมูลผู้ให้บริการ, พร้อมเพย์/บัญชีธนาคาร, ค่าเริ่มต้นเอกสาร |
+| `src/app/(app)/delivery-notes` | ใบส่งมอบงาน (สร้างจากใบเสนอราคาที่ตอบรับแล้ว, ไม่แสดงราคา) — ลูกค้าตรวจรับหรือขอแก้ไขผ่าน Portal; คำขอแก้ไขนับเป็นรอบแก้ไขของใบเสนอราคา (`document_revisions`) |
+| `src/app/(app)/settings` | โลโก้ (bucket สาธารณะ `logos`, เก็บ path ไว้ใน snapshot ตอนออกเอกสาร), ข้อมูลผู้ให้บริการ, พร้อมเพย์/บัญชีธนาคาร, ค่าเริ่มต้นเอกสาร |
 | `src/components/document-*.tsx` | editor / ใบเอกสาร / ปุ่มสถานะ ที่ใช้ร่วมกันทุกประเภทเอกสาร |
 | `src/app/api/documents/[id]/pdf` | PDF ฝั่ง server (`?download=1` = บันทึกเป็นไฟล์) |
 | `src/lib/pdf/document-pdf.tsx` | layout PDF ด้วย react-pdf + ฟอนต์ Sarabun (`assets/fonts`, OFL) — ตัดคำไทยด้วย `Intl.Segmenter` และแยก "ำ" เป็น "ํา" เพื่อเลี่ยงบั๊กตัวอักษรท้ายหาย |

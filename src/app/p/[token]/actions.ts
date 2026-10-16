@@ -12,7 +12,8 @@ export interface RespondState {
 
 const MESSAGES: [RegExp, string][] = [
   [/name is required/, "กรุณากรอกชื่อผู้ตอบรับ"],
-  [/already (accepted|rejected)/, "ใบเสนอราคานี้ได้รับการตอบกลับแล้ว"],
+  [/note is required/, "กรุณาระบุสิ่งที่ต้องการให้แก้ไข"],
+  [/already (accepted|rejected)/, "เอกสารนี้ได้รับการตอบกลับแล้ว"],
   [/expired/, "ใบเสนอราคานี้หมดอายุแล้ว กรุณาติดต่อผู้ให้บริการ"],
   [/invalid or expired link/, "ลิงก์ไม่ถูกต้องหรือหมดอายุ"],
 ];
@@ -21,7 +22,9 @@ export async function respondAction(token: string, accept: boolean, _prev: Respo
   if (!isTokenShaped(token)) return { error: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" };
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "กรุณากรอกชื่อผู้ตอบรับ" };
-  if (accept && !formData.get("agree")) return { error: "กรุณายืนยันว่าได้อ่านขอบเขตงานและเงื่อนไขแล้ว" };
+  if (accept && !formData.get("agree")) return { error: "กรุณาติ๊กช่องยืนยันก่อน" };
+  // Only delivery notes send a note: what the client wants changed.
+  const note = String(formData.get("note") ?? "").trim() || null;
 
   const { ip, userAgent } = await requestMeta();
   const { data: portal } = await getPortalDocument(token);
@@ -32,13 +35,14 @@ export async function respondAction(token: string, accept: boolean, _prev: Respo
     p_name: name,
     p_ip: ip,
     p_user_agent: userAgent,
+    p_note: note,
   });
   if (error) {
     const match = MESSAGES.find(([re]) => re.test(error.message));
     return { error: match ? match[1] : "บันทึกไม่สำเร็จ กรุณาลองใหม่" };
   }
 
-  if (portal) after(() => notifyClientEvent(portal.document.id, accept ? "accepted" : "rejected", name));
+  if (portal) after(() => notifyClientEvent(portal.document.id, accept ? "accepted" : "rejected", name, note));
   revalidatePath(`/p/${token}`);
   return {};
 }
