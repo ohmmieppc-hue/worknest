@@ -10,6 +10,7 @@ import { computeTotals, lineAmountCents } from "@/lib/totals";
 import { DOC_META, type DraftHeader, type DraftItem, type DraftPayload } from "@/lib/documents";
 import type { Client, DocumentItem, DocumentRow, ServiceItem } from "@/lib/types";
 import { deleteDraftAction, issueDocumentAction, saveDraftAction } from "@/app/(app)/documents/actions";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type Row = DraftItem & { key: string };
 
@@ -35,6 +36,7 @@ export function DocumentEditor({ doc, items, clients, services, vatRegistered = 
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
   const [savedAt, setSavedAt] = useState<string>();
+  const confirm = useConfirm();
 
   const [header, setHeader] = useState<DraftHeader>({
     client_id: doc.client_id,
@@ -134,13 +136,19 @@ ${s.description}` : s.name,
       () => setSavedAt(new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })),
     );
 
-  const issue = () => {
-    if (!confirm(`ออก${label}?\n\nเมื่อออกแล้วจะได้เลขที่เอกสารและแก้ไขไม่ได้ (ต้องยกเลิกแล้วออกใหม่)`)) return;
+  const issue = async () => {
+    const ok = await confirm({
+      title: `ออก${label}?`,
+      description: "เมื่อออกแล้วจะได้เลขที่เอกสารและแก้ไขไม่ได้ ถ้าต้องแก้ต้องยกเลิกแล้วออกฉบับใหม่",
+      confirmLabel: `ออก${label}`,
+    });
+    if (!ok) return;
     run(() => issueDocumentAction(doc.type, doc.id, payload()));
   };
 
-  const remove = () => {
-    if (!confirm(`ลบร่าง${label}นี้?`)) return;
+  const remove = async () => {
+    const ok = await confirm({ title: `ลบร่าง${label}นี้?`, description: "ร่างที่ลบแล้วกู้คืนไม่ได้", confirmLabel: "ลบร่าง", tone: "danger" });
+    if (!ok) return;
     run(() => deleteDraftAction(doc.type, doc.id));
   };
 

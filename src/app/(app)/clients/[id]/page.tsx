@@ -2,14 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
-import { Button, Card, LinkButton, PageHeader } from "@/components/ui";
+import { Card, LinkButton, PageHeader } from "@/components/ui";
 import { ClientStatusBadge, DocumentStatusBadge, PaymentStatusBadge } from "@/components/status-badge";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { formatDate, formatMoney } from "@/lib/format";
 import { requireWorkspace } from "@/lib/workspace";
 import type { Client, DocumentRow, InvoiceBalance } from "@/lib/types";
 import { ClientForm } from "../client-form";
-import { archiveClientAction, updateClientAction } from "../actions";
+import { updateClientAction } from "../actions";
+import { ArchiveClientButton } from "./archive-button";
 
 export const metadata: Metadata = { title: "ลูกค้า" };
 
@@ -64,9 +65,7 @@ async function ClientPageContent({ params }: PageProps<"/clients/[id]">) {
             <LinkButton href={`/invoices/new?client=${c.id}`} variant="secondary">
               + ใบแจ้งหนี้
             </LinkButton>
-            <form action={archiveClientAction.bind(null, c.id)}>
-              <Button variant="ghost">เก็บเข้าคลัง</Button>
-            </form>
+            <ArchiveClientButton id={c.id} name={c.name} />
           </>
         }
       />

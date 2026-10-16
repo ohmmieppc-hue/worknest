@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { Button, ErrorMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatMoney } from "@/lib/format";
 import type { ServiceItem } from "@/lib/types";
 import { archiveServiceAction, saveServiceAction, type ServiceFormState } from "./actions";
@@ -14,6 +15,8 @@ export function ServiceRow({ service }: { service: ServiceItem | null }) {
   // Editing closes itself after each successful save (save count changes).
   const [editingAt, setEditingAt] = useState<number | null>(null);
   const editing = !service || (editingAt !== null && editingAt === (state.saved ?? 0));
+  const archiveForm = useRef<HTMLFormElement>(null);
+  const confirm = useConfirm();
 
   if (!editing && service) {
     return (
@@ -29,8 +32,21 @@ export function ServiceRow({ service }: { service: ServiceItem | null }) {
           <Button variant="ghost" onClick={() => setEditingAt(state.saved ?? 0)}>
             แก้ไข
           </Button>
-          <form action={archiveServiceAction.bind(null, service.id)}>
-            <Button variant="ghost" className="text-red-700" onClick={(e) => !confirm(`เก็บ "${service.name}" เข้าคลัง?`) && e.preventDefault()}>
+          <form ref={archiveForm} action={archiveServiceAction.bind(null, service.id)}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-red-700"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `ลบ "${service.name}" ออกจากรายการบริการ?`,
+                  description: "เอกสารที่เคยใช้บริการนี้ไม่เปลี่ยนแปลง",
+                  confirmLabel: "ลบ",
+                  tone: "danger",
+                });
+                if (ok) archiveForm.current?.requestSubmit();
+              }}
+            >
               ลบ
             </Button>
           </form>

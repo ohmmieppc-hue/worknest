@@ -55,6 +55,17 @@ const LINKS: { href: string; label: string; icon: ReactNode }[] = [
   },
 ];
 
+// Ordered by importance and by the order the work happens: overview, the
+// documents from quote to receipt, then reference data. Help and settings sit
+// at the bottom of the sidebar (last on phones).
+const GROUPS: { title?: string; hrefs: string[]; bottom?: boolean }[] = [
+  { hrefs: ["/dashboard"] },
+  { title: "เอกสาร", hrefs: ["/quotations", "/invoices", "/delivery-notes", "/receipts"] },
+  { title: "ข้อมูล", hrefs: ["/clients", "/services"] },
+  { hrefs: ["/guide", "/settings"], bottom: true },
+];
+const byHref = new Map(LINKS.map((l) => [l.href, l]));
+
 type Variant = "top" | "side";
 
 // usePathname() is request data under Cache Components, so the active-state
@@ -73,24 +84,34 @@ function ActiveLinks({ variant }: { variant: Variant }) {
 
 function Links({ pathname, variant }: { pathname: string | null; variant: Variant }) {
   const side = variant === "side";
+  const link = (href: string) => {
+    const item = byHref.get(href)!;
+    const active = pathname != null && (pathname === href || pathname.startsWith(`${href}/`));
+    return (
+      <Link
+        key={href}
+        href={href}
+        aria-current={active ? "page" : undefined}
+        className={`shrink-0 whitespace-nowrap rounded-lg text-sm font-medium transition ${
+          side ? "flex items-center gap-3 px-3 py-2" : "px-3 py-1.5"
+        } ${active ? "bg-brand-50 text-brand-700" : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"}`}
+      >
+        {side && item.icon}
+        {item.label}
+      </Link>
+    );
+  };
+
+  if (!side) return <nav className="flex gap-1">{GROUPS.flatMap((g) => g.hrefs).map(link)}</nav>;
+
   return (
-    <nav className={side ? "flex flex-col gap-0.5" : "flex gap-1"}>
-      {LINKS.map(({ href, label, icon }) => {
-        const active = pathname != null && (pathname === href || pathname.startsWith(`${href}/`));
-        return (
-          <Link
-            key={href}
-            href={href}
-            aria-current={active ? "page" : undefined}
-            className={`shrink-0 whitespace-nowrap rounded-lg text-sm font-medium transition ${
-              side ? "flex items-center gap-3 px-3 py-2" : "px-3 py-1.5"
-            } ${active ? "bg-brand-50 text-brand-700" : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"}`}
-          >
-            {side && icon}
-            {label}
-          </Link>
-        );
-      })}
+    <nav className="flex h-full flex-col gap-4">
+      {GROUPS.map((g, i) => (
+        <div key={i} className={`flex flex-col gap-0.5 ${g.bottom ? "mt-auto border-t border-stone-100 pt-3" : ""}`}>
+          {g.title && <p className="px-3 pb-1 text-xs font-medium text-stone-400">{g.title}</p>}
+          {g.hrefs.map(link)}
+        </div>
+      ))}
     </nav>
   );
 }

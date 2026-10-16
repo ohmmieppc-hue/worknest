@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, ErrorMessage, inputClass } from "@/components/ui";
 import { DOC_META } from "@/lib/documents";
+import { useConfirm } from "@/components/confirm-dialog";
 import type { DocumentStatus, DocumentType } from "@/lib/types";
 import {
   createDeliveryNoteFromQuotationAction,
@@ -33,6 +34,7 @@ export function DocumentActions({ type, id, status, hint }: { type: DocumentType
   const [panel, setPanel] = useState<Panel>("none");
   const [reason, setReason] = useState("");
   const [percent, setPercent] = useState("50");
+  const confirm = useConfirm();
   const label = DOC_META[type].label;
 
   function perform(action: () => Promise<{ error?: string }>) {
@@ -64,16 +66,27 @@ export function DocumentActions({ type, id, status, hint }: { type: DocumentType
     actions.push({
       key: "accepted",
       label: isDelivery ? "บันทึกว่าลูกค้าตรวจรับแล้ว" : "บันทึกว่าลูกค้าตอบรับ",
-      run: () =>
-        confirm(isDelivery ? "บันทึกว่าลูกค้าตรวจรับงานแล้ว?" : `บันทึกว่าลูกค้าตอบรับ${label}นี้?`) &&
-        perform(() => setDocumentStatusAction(type, id, "accepted")),
+      run: async () => {
+        const ok = await confirm({
+          title: isDelivery ? "บันทึกว่าลูกค้าตรวจรับงานแล้ว?" : `บันทึกว่าลูกค้าตอบรับ${label}นี้?`,
+          description: "ใช้เมื่อลูกค้ายืนยันนอกระบบ เช่น ทาง LINE หรืออีเมล ระบบจะบันทึกว่าคุณเป็นผู้บันทึก",
+          confirmLabel: "บันทึก",
+        });
+        if (ok) perform(() => setDocumentStatusAction(type, id, "accepted"));
+      },
     });
     actions.push({
       key: "rejected",
       label: isDelivery ? "บันทึกว่าลูกค้าขอแก้ไข" : "บันทึกว่าลูกค้าปฏิเสธ",
-      run: () =>
-        confirm(isDelivery ? "บันทึกว่าลูกค้าขอแก้ไขงาน?" : `บันทึกว่าลูกค้าปฏิเสธ${label}นี้?`) &&
-        perform(() => setDocumentStatusAction(type, id, "rejected")),
+      run: async () => {
+        const ok = await confirm({
+          title: isDelivery ? "บันทึกว่าลูกค้าขอแก้ไขงาน?" : `บันทึกว่าลูกค้าปฏิเสธ${label}นี้?`,
+          description: "ใช้เมื่อลูกค้าแจ้งนอกระบบ บันทึกแล้วเปลี่ยนกลับไม่ได้",
+          confirmLabel: "บันทึก",
+          tone: "danger",
+        });
+        if (ok) perform(() => setDocumentStatusAction(type, id, "rejected"));
+      },
     });
   }
   if (editable) {

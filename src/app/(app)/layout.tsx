@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { requireWorkspace } from "@/lib/workspace";
+import { ConfirmProvider } from "@/components/confirm-dialog";
 import { NavLinks } from "./nav-links";
 
 // Large screens get a sidebar; phones and tablets keep a top bar whose links
@@ -22,7 +23,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
     <div className="min-h-screen lg:flex">
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-stone-200 bg-white print:hidden lg:flex">
         <div className="px-6 py-5">{logo}</div>
-        <div className="flex-1 overflow-y-auto px-3">
+        <div className="flex-1 overflow-y-auto px-3 pb-3">
           <NavLinks variant="side" />
         </div>
         <div className="border-t border-stone-200 p-3 text-sm">
@@ -50,7 +51,9 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         {/* Pages stream behind ./loading.tsx */}
-        <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8 lg:px-8 print:max-w-none print:p-0">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8 lg:px-8 print:max-w-none print:p-0">
+          <ConfirmProvider>{children}</ConfirmProvider>
+        </main>
       </div>
     </div>
   );

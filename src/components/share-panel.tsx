@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Card, ErrorMessage, inputClass } from "@/components/ui";
+import { useConfirm } from "@/components/confirm-dialog";
 import type { DocumentType } from "@/lib/types";
 import { createShareLinkAction, revokeShareLinkAction } from "@/app/(app)/documents/share-actions";
 
@@ -38,6 +39,7 @@ export function SharePanel({
   const [error, setError] = useState<string>();
   const [url, setUrl] = useState<string>();
   const [copied, setCopied] = useState(false);
+  const confirm = useConfirm();
 
   const live = links.filter((l) => !l.revoked_at && (!l.expires_at || new Date(l.expires_at) > new Date()));
 
@@ -54,8 +56,14 @@ export function SharePanel({
     });
   }
 
-  function revoke(linkId: string) {
-    if (!confirm("เพิกถอนลิงก์นี้? ลูกค้าจะเปิดลิงก์นี้ไม่ได้อีก")) return;
+  async function revoke(linkId: string) {
+    const ok = await confirm({
+      title: "เพิกถอนลิงก์นี้?",
+      description: "ลูกค้าจะเปิดลิงก์นี้ไม่ได้อีก ถ้าต้องการส่งใหม่ให้สร้างลิงก์ใหม่",
+      confirmLabel: "เพิกถอน",
+      tone: "danger",
+    });
+    if (!ok) return;
     startTransition(async () => {
       const result = await revokeShareLinkAction(type, documentId, linkId);
       if (result.error) setError(result.error);

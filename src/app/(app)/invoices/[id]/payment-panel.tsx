@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useState, useTransition } from "react";
 import { Button, Card, ErrorMessage, Field, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate, formatMoney } from "@/lib/format";
 import { paymentMethodLabel } from "@/lib/payments";
 import type { Payment, PaymentMethod } from "@/lib/types";
@@ -38,6 +39,7 @@ export function PaymentPanel({ invoiceId, canRecord, payments, defaults, emphasi
   const [wht, setWht] = useState(defaults.whtDue ? defaults.whtDue.toFixed(2) : "");
   const [pending, startTransition] = useTransition();
   const [rowError, setRowError] = useState<string>();
+  const confirm = useConfirm();
 
   function run(action: () => Promise<{ error?: string }>) {
     setRowError(undefined);
@@ -182,7 +184,15 @@ export function PaymentPanel({ invoiceId, canRecord, payments, defaults, emphasi
                   {!liveReceipt && (
                     <button
                       type="button"
-                      onClick={() => confirm("ลบรายการรับเงินนี้?") && run(() => deletePaymentAction(p.id, invoiceId))}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: "ลบรายการรับเงินนี้?",
+                          description: `${formatDate(p.received_on)} · ${formatMoney(p.cash_amount)} บาท ยอดคงค้างของใบแจ้งหนี้จะเพิ่มกลับ`,
+                          confirmLabel: "ลบรายการ",
+                          tone: "danger",
+                        });
+                        if (ok) run(() => deletePaymentAction(p.id, invoiceId));
+                      }}
                       disabled={pending}
                       className="ml-auto text-xs text-stone-400 hover:text-red-600"
                     >
