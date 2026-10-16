@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/workspace";
 import type { createClient } from "@/lib/supabase/server";
-import type { Client, ClientResponse, DocumentItem, DocumentRow, DocumentType, ServiceItem } from "@/lib/types";
+import type { Client, ClientResponse, DocumentItem, DocumentRow, DocumentType, ScheduleRow, ServiceItem } from "@/lib/types";
+import type { DraftScheduleRow } from "@/lib/documents";
 
 export async function loadDocument(type: DocumentType, id: string) {
   const { supabase } = await requireWorkspace();
@@ -31,6 +32,25 @@ export async function loadClientResponse(
   const { metadata, ...rest } = data as Omit<ClientResponse, "note"> & { metadata: { note?: string } | null };
   return { ...rest, note: metadata?.note ?? null };
 }
+
+export async function loadSchedule(supabase: Awaited<ReturnType<typeof createClient>>, quotationId: string) {
+  const { data } = await supabase
+    .from("payment_schedules")
+    .select("id, label, percent, amount, due_rule, due_date, invoice_id")
+    .eq("quotation_id", quotationId)
+    .order("sort_order");
+  return (data ?? []) as ScheduleRow[];
+}
+
+/** Saved installments in the shape the editor and save_payment_schedule() use. */
+export const toDraftSchedule = (rows: ScheduleRow[]): DraftScheduleRow[] =>
+  rows.map((r) => ({
+    label: r.label,
+    percent: r.percent ?? "",
+    amount: r.amount ?? "",
+    due_rule: r.due_rule === "on_milestone" ? "manual" : r.due_rule,
+    due_date: r.due_date ?? "",
+  }));
 
 // Active clients plus the document's own client, even if it was archived since.
 export async function loadClientOptions(currentClientId: string) {

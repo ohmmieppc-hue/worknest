@@ -9,6 +9,8 @@ import { formatMoney } from "@/lib/format";
 import { computeTotals, lineAmountCents } from "@/lib/totals";
 import { DOC_META, type DraftHeader, type DraftItem, type DraftPayload } from "@/lib/documents";
 import type { Client, DocumentItem, DocumentRow, ServiceItem } from "@/lib/types";
+import { ScheduleEditor, toScheduleDraft, type ScheduleDraft } from "@/components/schedule-editor";
+import type { DraftScheduleRow } from "@/lib/documents";
 import { deleteDraftAction, issueDocumentAction, saveDraftAction } from "@/app/(app)/documents/actions";
 import { useConfirm } from "@/components/confirm-dialog";
 
@@ -24,11 +26,13 @@ interface Props {
   services: ServiceItem[];
   /** The workspace is VAT-registered, so VAT can be charged. */
   vatRegistered?: boolean;
+  /** Quotations: the saved payment schedule. */
+  schedule?: DraftScheduleRow[];
 }
 
 // Draft editor shared by quotations, invoices and delivery notes (which list
 // what is handed over, without prices).
-export function DocumentEditor({ doc, items, clients, services, vatRegistered = false }: Props) {
+export function DocumentEditor({ doc, items, clients, services, vatRegistered = false, schedule: savedSchedule = [] }: Props) {
   const isQuotation = doc.type === "quotation";
   const isDelivery = doc.type === "delivery_note";
   const label = DOC_META[doc.type].label;
@@ -104,6 +108,7 @@ ${s.description}` : s.name,
   const activeRows = rows.filter((r) => r.description.trim());
   const totals = computeTotals(activeRows, { discount: header.discount_amount, whtRate: header.wht_rate, vatRate: header.vat_rate });
   const hasVat = Number(header.vat_rate) > 0;
+  const [schedule, setSchedule] = useState<ScheduleDraft[]>(() => savedSchedule.map(toScheduleDraft));
 
   const payload = (): DraftPayload => ({
     header: isDelivery ? { ...header, vat_rate: "0" } : header,
@@ -115,6 +120,15 @@ ${s.description}` : s.name,
       unit_price: isDelivery ? "0" : r.unit_price,
       discount_amount: isDelivery ? "0" : r.discount_amount,
     })),
+    schedule: isQuotation
+      ? schedule.map((s) => ({
+          label: s.label,
+          percent: s.unit === "percent" ? s.percent : "",
+          amount: s.unit === "amount" ? s.amount : "",
+          due_rule: s.due_rule,
+          due_date: s.due_rule === "fixed_date" ? s.due_date : "",
+        }))
+      : undefined,
   });
 
   function run(action: () => Promise<{ error?: string }>, onSuccess?: () => void) {
@@ -414,6 +428,10 @@ ${s.description}` : s.name,
                   className={inputClass}
                 />
               </Field>
+              <div className="sm:col-span-2">
+                <p className="mb-1 text-sm font-medium text-stone-700">งวดชำระ (ไม่บังคับ)</p>
+                <ScheduleEditor rows={schedule} onChange={setSchedule} base={totals.subtotal - totals.discount} />
+              </div>
               <Field label="จำนวนรอบแก้ไขที่รวมในราคา">
                 <input
                   type="number"

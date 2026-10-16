@@ -5,9 +5,9 @@ import { LinkedList } from "@/components/linked-list";
 import { DocumentStatusBadge } from "@/components/status-badge";
 import { DocumentEditor } from "@/components/document-editor";
 import { DocumentPaper, VoidNotice } from "@/components/document-paper";
-import { loadClientOptions, loadServiceOptions, loadDocument, loadShareLinks } from "@/lib/document-data";
+import { loadClientOptions, loadSchedule, loadServiceOptions, loadDocument, loadShareLinks, toDraftSchedule } from "@/lib/document-data";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { DocumentRevision, DocumentRow } from "@/lib/types";
+import type { DocumentRevision, DocumentRow, ScheduleRow } from "@/lib/types";
 import { DocumentActions } from "@/components/document-actions";
 import { DocumentExport } from "@/components/document-export";
 import { SharePanel } from "@/components/share-panel";
@@ -16,6 +16,8 @@ import { requireWorkspace } from "@/lib/workspace";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { RevisionPanel } from "./revision-panel";
+import { SchedulePanel, type LinkedInvoice } from "./schedule-panel";
+import { scheduleBase } from "@/lib/schedule";
 
 export const metadata: Metadata = { title: "ใบเสนอราคา" };
 
@@ -35,7 +37,11 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
   const shareLinks = doc.status === "draft" ? [] : await loadShareLinks(doc.id);
 
   if (doc.status === "draft") {
-    const [clients, services] = await Promise.all([loadClientOptions(doc.client_id), loadServiceOptions()]);
+    const [clients, services, schedule] = await Promise.all([
+      loadClientOptions(doc.client_id),
+      loadServiceOptions(),
+      loadSchedule(supabase, doc.id),
+    ]);
     const { workspace } = await requireWorkspace();
     return (
       <div>
@@ -50,24 +56,45 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
           clients={clients}
           services={services}
           vatRegistered={workspace.vat_registered}
+          schedule={toDraftSchedule(schedule)}
         />
       </div>
     );
   }
 
-  const [{ data: invoiceData }, { data: revisionData }] = await Promise.all([
+  const [{ data: invoiceData }, { data: revisionData }, scheduleRows] = await Promise.all([
     supabase
       .from("documents")
-      .select("id, type, number, status, total")
+      .select("id, type, number, status, total, subtotal, discount_amount")
       .in("type", ["invoice", "delivery_note"])
       .eq("source_document_id", doc.id)
       .order("created_at"),
     supabase.from("document_revisions").select("id, note, requested_by, created_at").eq("document_id", doc.id).order("created_at"),
+    loadSchedule(supabase, doc.id),
   ]);
   const revisions = (revisionData ?? []) as DocumentRevision[];
-  const linked = (invoiceData ?? []) as Pick<DocumentRow, "id" | "type" | "number" | "status" | "total">[];
+  const linked = (invoiceData ?? []) as Pick<DocumentRow, "id" | "type" | "number" | "status" | "total" | "subtotal" | "discount_amount">[];
   const invoices = linked.filter((d) => d.type === "invoice");
   const deliveries = linked.filter((d) => d.type === "delivery_note");
+  const schedule = scheduleRows as (ScheduleRow & { id: string })[];
+  const base = scheduleBase(doc);
+  // How much of the quotation's pre-VAT amount live invoices already bill.
+  const billedPercent =
+    base > 0
+      ? (invoices.filter((i) => i.status !== "void").reduce((s, i) => s + Number(i.subtotal) - Number(i.discount_amount), 0) / base) * 100
+      : 0;
+  const { data: balanceData } = invoices.length
+    ? await supabase.from("invoice_balances").select("invoice_id, payment_status, is_overdue").in("invoice_id", invoices.map((i) => i.id))
+    : { data: [] };
+  const paymentOf = new Map(
+    ((balanceData ?? []) as { invoice_id: string; payment_status: "unpaid" | "partially_paid" | "paid"; is_overdue: boolean }[]).map((b) => [
+      b.invoice_id,
+      { status: b.payment_status, overdue: b.is_overdue },
+    ]),
+  );
+  const linkedInvoices: Record<string, LinkedInvoice> = Object.fromEntries(
+    invoices.map((i) => [i.id, { id: i.id, number: i.number, status: i.status, payment: paymentOf.get(i.id) ?? null }]),
+  );
 
   const client = doc.buyer_snapshot?.name ?? doc.buyer_snapshot?.legal_name;
   // Issued but never sent: sending the link is the next step.
@@ -84,12 +111,17 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
       primary={
         <>
           {unsent && <SharePanel type="quotation" documentId={doc.id} links={shareLinks} suggested />}
+          {doc.status === "accepted" && schedule.length > 0 && (
+            <SchedulePanel rows={schedule} base={base} invoices={linkedInvoices} canBill billedTotal={(billedPercent / 100) * base} />
+          )}
           <SidePanel title="การดำเนินการ">
             <div className="p-4">
               <DocumentActions
                 type="quotation"
                 id={doc.id}
                 status={doc.status}
+                hasSchedule={schedule.length > 0}
+                billedPercent={billedPercent}
                 hint={doc.status === "sent" || doc.status === "viewed" ? "รอลูกค้าตอบรับผ่านลิงก์ ระบบจะแจ้งเมื่อลูกค้าตอบ" : undefined}
               />
             </div>
@@ -139,7 +171,7 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
         </>
       }
     >
-      <DocumentPaper doc={doc} items={items} />
+      <DocumentPaper doc={doc} items={items} schedule={schedule} />
     </DocumentDetail>
   );
 }

@@ -20,7 +20,8 @@ create type project_status    as enum ('draft', 'confirmed', 'in_progress', 'rev
 create type milestone_status  as enum ('todo', 'in_progress', 'done');
 create type document_type     as enum ('quotation', 'invoice', 'receipt', 'delivery_note');
 create type document_status   as enum ('draft', 'issued', 'sent', 'viewed', 'accepted', 'rejected', 'expired', 'void');
-create type schedule_due_rule as enum ('on_accept', 'on_milestone', 'fixed_date');
+-- manual = billed when the condition written in the label is met (e.g. on delivery).
+create type schedule_due_rule as enum ('on_accept', 'on_milestone', 'fixed_date', 'manual');
 create type payment_method    as enum ('transfer', 'promptpay', 'cash', 'cheque', 'other');
 create type wht_cert_status   as enum ('not_applicable', 'pending', 'received');
 create type income_type       as enum ('40_2', '40_8');
@@ -832,6 +833,36 @@ begin
   where id = p_id;
 end $$;
 
+-- Replace a draft quotation's payment schedule (installments).
+-- SECURITY INVOKER: RLS and payment_schedules_guard still apply.
+-- p_rows: [{label, percent | amount, due_rule, due_date}]; rows without a label are skipped.
+create function save_payment_schedule(p_quotation uuid, p_rows jsonb) returns void
+language plpgsql as $$
+declare
+  v_doc documents%rowtype;
+begin
+  select * into v_doc from documents where id = p_quotation for update;
+  if not found or v_doc.type <> 'quotation' then
+    raise exception 'quotation % not found', p_quotation;
+  end if;
+  if v_doc.status <> 'draft' then
+    raise exception 'payment schedule of a % quotation cannot be changed', v_doc.status;
+  end if;
+
+  delete from payment_schedules where quotation_id = p_quotation;
+  insert into payment_schedules (workspace_id, quotation_id, sort_order, label, percent, amount, due_rule, due_date)
+  select v_doc.workspace_id,
+         p_quotation,
+         r.ord - 1,
+         trim(r.item ->> 'label'),
+         nullif(r.item ->> 'percent', '')::numeric,
+         nullif(r.item ->> 'amount', '')::numeric,
+         coalesce(nullif(r.item ->> 'due_rule', ''), 'on_accept')::schedule_due_rule,
+         nullif(r.item ->> 'due_date', '')::date
+  from jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) with ordinality as r(item, ord)
+  where length(trim(coalesce(r.item ->> 'label', ''))) > 0;
+end $$;
+
 -- Issue a receipt for one payment, atomically: draft → item → issued → link.
 -- SECURITY INVOKER: RLS still applies. A payment whose receipt was voided can
 -- be given a new one.
@@ -916,6 +947,7 @@ declare
   v_ref      text;
   v_revs     jsonb;
   v_response jsonb;
+  v_schedule jsonb;
 begin
   v_link := portal_link(p_token);
   if v_link.id is null then
@@ -943,6 +975,10 @@ begin
     select coalesce(jsonb_agg(jsonb_build_object('note', r.note, 'requested_by', r.requested_by, 'created_at', r.created_at)
                               order by r.created_at), '[]'::jsonb)
       into v_revs from document_revisions r where r.document_id = v_doc.id;
+    select coalesce(jsonb_agg(jsonb_build_object('label', s.label, 'percent', s.percent, 'amount', s.amount,
+                                                 'due_rule', s.due_rule, 'due_date', s.due_date)
+                              order by s.sort_order), '[]'::jsonb)
+      into v_schedule from payment_schedules s where s.quotation_id = v_doc.id;
   end if;
   if v_doc.status in ('accepted', 'rejected') then
     select jsonb_build_object('actor', e.actor, 'actor_name', e.actor_name, 'created_at', e.created_at, 'note', e.metadata ->> 'note')
@@ -958,7 +994,8 @@ begin
     'payment',   v_payment,
     'reference', v_ref,
     'revisions', v_revs,
-    'response',  v_response);
+    'response',  v_response,
+    'schedule',  v_schedule);
 end $$;
 
 -- Called when the client opens the link: sent → viewed, plus an evidence row.
@@ -1300,6 +1337,9 @@ alter function payment_schedules_guard() set search_path = public;
 alter function payments_guard() set search_path = public;
 alter function document_events_append_only() set search_path = public;
 alter function save_document_draft(uuid, jsonb, jsonb) set search_path = public;
+alter function save_payment_schedule(uuid, jsonb) set search_path = public;
+revoke execute on function save_payment_schedule(uuid, jsonb) from public, anon;
+grant  execute on function save_payment_schedule(uuid, jsonb) to authenticated;
 alter function issue_receipt_for_payment(uuid) set search_path = public;
 
 -- Portal: the three entry points are public; the token lookup is not.

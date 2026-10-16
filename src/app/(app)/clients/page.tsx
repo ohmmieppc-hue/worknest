@@ -65,14 +65,14 @@ async function ClientsPageContent({ searchParams }: PageProps<"/clients">) {
     <div>
       <PageHeader
         title="ลูกค้า"
-        description="ลูกค้าและผู้ที่ติดต่อเข้ามา (Lead)"
+        description="ลูกค้าและว่าที่ลูกค้าที่ติดต่อเข้ามา"
         actions={<LinkButton href="/clients/new">+ เพิ่มลูกค้า</LinkButton>}
       />
 
       <StatGrid
         stats={[
           { label: "ลูกค้าที่ทำงานด้วย", value: statusCount("active"), hint: `ทั้งหมด ${all.length} ราย` },
-          { label: "Lead รอปิดงาน", value: statusCount("lead"), tone: statusCount("lead") ? "warning" : "default" },
+          { label: "ว่าที่ลูกค้า", value: statusCount("lead"), tone: statusCount("lead") ? "warning" : "default" },
           { label: "ยอดค้างรับรวม", value: formatMoney(totalOwed), hint: `${owed.size} ราย` },
           { label: "ลูกค้าใหม่เดือนนี้", value: newThisMonth, tone: newThisMonth ? "success" : "default" },
         ]}

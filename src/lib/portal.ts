@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import type { ClientResponse, DocumentItem, DocumentRevision, DocumentRow, InvoiceBalance, Payment } from "@/lib/types";
+import type { ClientResponse, DocumentItem, DocumentRevision, DocumentRow, InvoiceBalance, Payment, ScheduleRow } from "@/lib/types";
 
 export interface PortalDocument {
   document: DocumentRow;
@@ -12,6 +12,8 @@ export interface PortalDocument {
   revisions: DocumentRevision[] | null;
   /** Latest accept / reject by the client or owner. */
   response: ClientResponse | null;
+  /** Quotations only. */
+  schedule: ScheduleRow[] | null;
 }
 
 // Tokens are 32 random bytes in base64url; reject anything else before

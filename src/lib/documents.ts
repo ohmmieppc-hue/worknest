@@ -63,9 +63,20 @@ export interface DraftItem {
   discount_amount: string;
 }
 
+/** One installment as sent by the editor; exactly one of percent / amount is set. */
+export interface DraftScheduleRow {
+  label: string;
+  percent: string;
+  amount: string;
+  due_rule: "on_accept" | "manual" | "fixed_date";
+  due_date: string;
+}
+
 export interface DraftPayload {
   header: DraftHeader;
   items: DraftItem[];
+  /** Quotations only; omitted means "leave the schedule as it is". */
+  schedule?: DraftScheduleRow[];
 }
 
 export interface ActionResult {

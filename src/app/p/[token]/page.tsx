@@ -105,7 +105,7 @@ async function Portal({ params }: Pick<PageProps<"/p/[token]">, "params">) {
           )}
         </div>
 
-        <DocumentPaper doc={doc} items={data.items} reference={data.reference} response={data.response}>
+        <DocumentPaper doc={doc} items={data.items} reference={data.reference} response={data.response} schedule={data.schedule}>
           {due && doc.status !== "void" && due.outstanding > 0 && (
             <PaymentInstructions seller={doc.seller_snapshot} cashDue={due.cashDue} paid={Number(data.balance?.settled ?? 0)} />
           )}

@@ -5,7 +5,8 @@ import { bahtText } from "@/lib/bahttext";
 import { docLabel } from "@/lib/documents";
 import { formatDate, formatMoney } from "@/lib/format";
 import { paymentMethodLabel } from "@/lib/payments";
-import type { ClientResponse, DocumentItem, DocumentRow, PartySnapshot, Payment } from "@/lib/types";
+import type { ClientResponse, DocumentItem, DocumentRow, PartySnapshot, Payment, ScheduleRow } from "@/lib/types";
+import { dueText, installmentAmount, installmentPercent, scheduleBase } from "@/lib/schedule";
 
 const FONT_DIR = path.join(process.cwd(), "assets", "fonts");
 
@@ -95,6 +96,8 @@ export interface PdfExtras {
   /** Invoice: cash still to transfer, with an optional PromptPay QR (data URL). */
   /** Delivery notes: the client's sign-off or change request. */
   response?: ClientResponse | null;
+  /** Quotations: payment installments. */
+  schedule?: ScheduleRow[] | null;
   /** Seller logo from the snapshot, already downloaded. */
   logo?: { data: Buffer; format: "png" | "jpg" } | null;
   due?: { cashDue: number; paid: number; qr: string | null; promptpay: string | null; banks: { bank: string; account_no: string; account_name: string }[] } | null;
@@ -234,6 +237,8 @@ export function DocumentPdf({ doc, items, extras }: { doc: DocumentRow; items: D
           </View>
         )}
 
+        {extras.schedule && extras.schedule.length > 0 && <ScheduleTable doc={doc} rows={extras.schedule} />}
+
         <Terms doc={doc} />
 
         {(doc.type === "quotation" || doc.type === "receipt") && <Signatures type={doc.type} />}
@@ -307,6 +312,33 @@ function Terms({ doc }: { doc: DocumentRow }) {
           <Text style={s.muted}>{body}</Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+function ScheduleTable({ doc, rows }: { doc: DocumentRow; rows: ScheduleRow[] }) {
+  const base = scheduleBase(doc);
+  const taxed = Number(doc.vat_amount) > 0 || Number(doc.wht_amount) > 0;
+  return (
+    <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: line, paddingTop: 10 }} wrap={false}>
+      <Text style={[s.bold, { marginBottom: 4 }]}>งวดชำระ</Text>
+      <View style={[s.row, { borderBottomWidth: 0.5, borderBottomColor: line }]}>
+        <Text style={[s.th, { width: "6%" }]}>#</Text>
+        <Text style={[s.th, { width: "40%" }]}>งวด</Text>
+        <Text style={[s.th, { width: "28%" }]}>กำหนดชำระ</Text>
+        <Text style={[s.th, s.num, { width: "10%" }]}>สัดส่วน</Text>
+        <Text style={[s.th, s.num, { width: "16%" }]}>จำนวนเงิน</Text>
+      </View>
+      {rows.map((r, i) => (
+        <View key={r.id ?? i} style={[s.row, { borderBottomWidth: 0.5, borderBottomColor: line }]}>
+          <Text style={[s.td, s.muted, { width: "6%" }]}>{i + 1}</Text>
+          <Text style={[s.td, { width: "40%", paddingRight: 6 }]}>{r.label}</Text>
+          <Text style={[s.td, s.muted, { width: "28%" }]}>{dueText(r)}</Text>
+          <Text style={[s.td, s.num, { width: "10%" }]}>{Math.round(installmentPercent(r, base) * 100) / 100}%</Text>
+          <Text style={[s.td, s.num, { width: "16%" }]}>{formatMoney(installmentAmount(r, base))}</Text>
+        </View>
+      ))}
+      {taxed && <Text style={[s.muted, { fontSize: 8, marginTop: 4 }]}>จำนวนเงินแต่ละงวดเป็นยอดก่อนภาษีมูลค่าเพิ่มและก่อนหัก ณ ที่จ่าย</Text>}
     </View>
   );
 }

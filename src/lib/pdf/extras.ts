@@ -2,7 +2,7 @@ import QRCode from "qrcode";
 import { amountsDue } from "@/lib/payments";
 import { logoUrl, sniffImageType } from "@/lib/logo";
 import { promptPayPayload } from "@/lib/promptpay";
-import type { ClientResponse, DocumentRow, InvoiceBalance, Payment } from "@/lib/types";
+import type { ClientResponse, DocumentRow, InvoiceBalance, Payment, ScheduleRow } from "@/lib/types";
 import type { PdfExtras } from "./document-pdf";
 
 type SellerWithPayment = NonNullable<DocumentRow["seller_snapshot"]> & {
@@ -18,14 +18,16 @@ export async function buildPdfExtras({
   payment,
   reference,
   response = null,
+  schedule = null,
 }: {
   doc: DocumentRow;
   balance: Pick<InvoiceBalance, "outstanding" | "wht_withheld" | "settled"> | null;
   payment: Pick<Payment, "received_on" | "cash_amount" | "wht_amount" | "method" | "reference"> | null;
   reference: string | null;
   response?: ClientResponse | null;
+  schedule?: ScheduleRow[] | null;
 }): Promise<PdfExtras> {
-  const extras: PdfExtras = { reference, payment: payment as Payment | null, response, logo: await fetchLogo(doc) };
+  const extras: PdfExtras = { reference, payment: payment as Payment | null, response, schedule, logo: await fetchLogo(doc) };
 
   if (doc.type === "invoice" && doc.status !== "void" && balance) {
     const due = amountsDue(doc, balance);

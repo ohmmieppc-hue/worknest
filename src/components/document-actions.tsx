@@ -27,7 +27,23 @@ interface Action {
 // One obvious next step per status, everything else under "การดำเนินการอื่น".
 // When the next step lives in another panel (send the link, record a
 // payment), the page passes a `hint` instead and no button is promoted here.
-export function DocumentActions({ type, id, status, hint }: { type: DocumentType; id: string; status: DocumentStatus; hint?: string }) {
+export function DocumentActions({
+  type,
+  id,
+  status,
+  hint,
+  hasSchedule = false,
+  billedPercent = 0,
+}: {
+  type: DocumentType;
+  id: string;
+  status: DocumentStatus;
+  hint?: string;
+  /** Quotation with installments: billing happens from the schedule panel. */
+  hasSchedule?: boolean;
+  /** Share of the quotation already invoiced, to warn before billing past 100%. */
+  billedPercent?: number;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
@@ -107,7 +123,9 @@ export function DocumentActions({ type, id, status, hint }: { type: DocumentType
   // The promoted next step, if this component owns it.
   const primaryKey =
     type === "quotation" && status === "accepted"
-      ? "invoice"
+      ? hasSchedule
+        ? null
+        : "invoice"
       : status === "void" || (status === "rejected" && editable) || (type === "quotation" && status === "expired")
         ? "duplicate"
         : null;
@@ -127,6 +145,14 @@ export function DocumentActions({ type, id, status, hint }: { type: DocumentType
       {panel === "invoice" && (
         <div className="rounded-lg border border-brand-100 bg-brand-50/60 p-3">
           <p className="mb-2 text-sm font-medium text-brand-700">เรียกเก็บเงินจากใบเสนอราคานี้</p>
+          {billedPercent > 0.005 && (
+            <p className="mb-2 text-xs text-stone-600">เรียกเก็บไปแล้ว {Math.round(billedPercent * 100) / 100}% ของใบเสนอราคานี้</p>
+          )}
+          {billedPercent + (Number(percent) || 0) > 100.005 && (
+            <p className="mb-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+              รวมกับที่เรียกเก็บแล้วจะเกิน 100% ({Math.round((billedPercent + (Number(percent) || 0)) * 100) / 100}%)
+            </p>
+          )}
           <Button onClick={() => perform(() => createInvoiceFromQuotationAction(id, null))} disabled={pending} className="w-full">
             เต็มจำนวน (คัดลอกทุกรายการ)
           </Button>

@@ -39,7 +39,7 @@ export async function NewDocument({ type, preselected, error }: Props) {
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
-                    {c.status === "lead" ? " (Lead)" : ""}
+                    {c.status === "lead" ? " (ว่าที่ลูกค้า)" : ""}
                   </option>
                 ))}
               </select>

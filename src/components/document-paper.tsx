@@ -4,7 +4,8 @@ import { bahtText } from "@/lib/bahttext";
 import { docLabel } from "@/lib/documents";
 import { formatDate, formatMoney } from "@/lib/format";
 import { logoUrl } from "@/lib/logo";
-import type { ClientResponse, DocumentItem, DocumentRow, PartySnapshot } from "@/lib/types";
+import type { ClientResponse, DocumentItem, DocumentRow, PartySnapshot, ScheduleRow } from "@/lib/types";
+import { dueText, installmentAmount, installmentPercent, scheduleBase } from "@/lib/schedule";
 
 interface Props {
   doc: DocumentRow;
@@ -15,11 +16,13 @@ interface Props {
   children?: ReactNode;
   /** Delivery notes: the client's sign-off or change request. */
   response?: ClientResponse | null;
+  /** Quotations: payment installments. */
+  schedule?: ScheduleRow[] | null;
 }
 
 // Read-only rendering of an issued document, built only from its snapshots so
 // later edits to the client or workspace never change it.
-export function DocumentPaper({ doc, items, reference, children, response }: Props) {
+export function DocumentPaper({ doc, items, reference, children, response, schedule }: Props) {
   const meta = docLabel(doc);
   // Delivery notes list what is handed over; prices stay on the quotation.
   const priced = doc.type !== "delivery_note";
@@ -143,6 +146,8 @@ export function DocumentPaper({ doc, items, reference, children, response }: Pro
 
       {children}
 
+      {schedule && schedule.length > 0 && <ScheduleTable doc={doc} rows={schedule} />}
+
       {(doc.scope_of_work || doc.exclusions || doc.revisions_included != null || doc.payment_terms || doc.notes) && (
         <div className="mt-8 grid gap-5 border-t border-stone-200 pt-6 text-sm sm:grid-cols-2">
           <Section title="ขอบเขตงาน" body={doc.scope_of_work} />
@@ -201,6 +206,39 @@ export function TotalRow({
     <div className={`flex justify-between gap-4 ${strong ? "text-base font-semibold" : ""} ${muted ? "text-stone-500" : ""}`}>
       <dt>{label}</dt>
       <dd className="tabular-nums">{formatMoney(value)}</dd>
+    </div>
+  );
+}
+
+function ScheduleTable({ doc, rows }: { doc: DocumentRow; rows: ScheduleRow[] }) {
+  const base = scheduleBase(doc);
+  const taxed = Number(doc.vat_amount) > 0 || Number(doc.wht_amount) > 0;
+  return (
+    <div className="mt-8 border-t border-stone-200 pt-6 text-sm">
+      <p className="mb-2 font-medium">งวดชำระ</p>
+      <table className="w-full">
+        <thead className="text-left text-xs text-stone-500">
+          <tr>
+            <th className="w-8 py-1.5 font-medium">#</th>
+            <th className="py-1.5 font-medium">งวด</th>
+            <th className="py-1.5 font-medium">กำหนดชำระ</th>
+            <th className="py-1.5 text-right font-medium">สัดส่วน</th>
+            <th className="py-1.5 text-right font-medium">จำนวนเงิน</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-stone-100">
+          {rows.map((r, i) => (
+            <tr key={r.id ?? i} className="align-top">
+              <td className="py-2 text-stone-400">{i + 1}</td>
+              <td className="py-2">{r.label}</td>
+              <td className="py-2 text-stone-600">{dueText(r)}</td>
+              <td className="py-2 text-right tabular-nums">{Math.round(installmentPercent(r, base) * 100) / 100}%</td>
+              <td className="py-2 text-right tabular-nums">{formatMoney(installmentAmount(r, base))}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {taxed && <p className="mt-2 text-xs text-stone-500">จำนวนเงินแต่ละงวดเป็นยอดก่อนภาษีมูลค่าเพิ่มและก่อนหัก ณ ที่จ่าย</p>}
     </div>
   );
 }

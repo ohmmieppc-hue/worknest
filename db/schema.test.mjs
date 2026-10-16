@@ -265,6 +265,28 @@ digest = (await db.query(`select d from notify_due_digest('s3cret', current_date
 ok('digest skips overdue by 2 days', !digest.some(d => d.items.some(i => i.document_id === inv5)));
 await expectError('digest rejects wrong secret', `select notify_due_digest('nope')`, [], /forbidden/);
 
+// Payment schedule (installments) on a quotation
+const { id: sq } = await one(`insert into documents (workspace_id, type, client_id, valid_until) values ($1,'quotation',$2,current_date+7) returning id`, [ws, client]);
+await db.query(`insert into document_items (workspace_id, document_id, description, unit_price) values ($1,$2,'เว็บไซต์',100000)`, [ws, sq]);
+await db.query(`select save_payment_schedule($1, $2)`, [sq, JSON.stringify([
+  { label: 'มัดจำ', percent: '40', due_rule: 'on_accept' },
+  { label: 'ส่งงานรอบแรก', percent: '40', due_rule: 'manual' },
+  { label: 'ส่งมอบงาน', amount: '20000', due_rule: 'fixed_date', due_date: '2030-01-31' },
+  { label: '  ', percent: '5' },
+])]);
+const sched = (await db.query(`select label, percent, amount, due_rule from payment_schedules where quotation_id=$1 order by sort_order`, [sq])).rows;
+ok('schedule saved, blank rows skipped', sched.length === 3 && sched[1].due_rule === 'manual' && sched[2].amount === '20000.00', JSON.stringify(sched));
+await db.query(`update documents set status='issued' where id=$1`, [sq]);
+await expectError('schedule frozen after issue', `select save_payment_schedule($1, '[]')`, [sq], /cannot be changed/);
+await db.query(`update documents set status='accepted' where id=$1`, [sq]);
+const { id: sinv } = await one(`insert into documents (workspace_id, type, client_id, source_document_id) values ($1,'invoice',$2,$3) returning id`, [ws, client, sq]);
+await db.query(`update payment_schedules set invoice_id=$1 where quotation_id=$2 and sort_order=0`, [sinv, sq]);
+ok('installment linked to its invoice', (await one(`select count(*)::int c from payment_schedules where invoice_id=$1`, [sinv])).c === 1);
+await expectError('schedule label cannot change after issue',
+  `update payment_schedules set label='x' where quotation_id=$1 and sort_order=1`, [sq], /cannot be changed/);
+await db.query(`insert into share_links (workspace_id, document_id, token_hash) values ($1,$2,sha256(convert_to('tok-sched','UTF8')))`, [ws, sq]);
+ok('portal shows schedule', (await one(`select portal_get_document('tok-sched') d`)).d.schedule.length === 3);
+
 // VAT: a VAT invoice's receipt is the tax invoice, split from what was received
 await db.query(`update workspaces set vat_registered = true where id=$1`, [ws]);
 const { id: vinv } = await one(`insert into documents (workspace_id, type, client_id) values ($1,'invoice',$2) returning id`, [ws, client]);

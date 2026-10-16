@@ -55,13 +55,13 @@ const LINKS: { href: string; label: string; icon: ReactNode }[] = [
   },
 ];
 
-// Ordered by importance and by the order the work happens: overview, the
-// documents from quote to receipt, then reference data. Help and settings sit
-// at the bottom of the sidebar (last on phones).
+// Overview, then the clients and services every document starts from, then
+// the documents in the order the work happens (quote to receipt). Help and
+// settings sit at the bottom of the sidebar (last on phones).
 const GROUPS: { title?: string; hrefs: string[]; bottom?: boolean }[] = [
   { hrefs: ["/dashboard"] },
-  { title: "เอกสาร", hrefs: ["/quotations", "/invoices", "/delivery-notes", "/receipts"] },
   { title: "ข้อมูล", hrefs: ["/clients", "/services"] },
+  { title: "เอกสาร", hrefs: ["/quotations", "/invoices", "/delivery-notes", "/receipts"] },
   { hrefs: ["/guide", "/settings"], bottom: true },
 ];
 const byHref = new Map(LINKS.map((l) => [l.href, l]));

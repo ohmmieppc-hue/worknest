@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/workspace";
 import { toThaiError } from "@/lib/errors";
-import { addDaysISO, todayISO } from "@/lib/format";
+import { addDaysISO, formatMoney, todayISO } from "@/lib/format";
+import { computeTotals } from "@/lib/totals";
+import { installmentAmount, installmentPercent, scheduleBase, scheduleMismatch } from "@/lib/schedule";
 import { docPath, type ActionResult, type DraftPayload } from "@/lib/documents";
-import type { DocumentItem, DocumentRow, DocumentStatus, DocumentType, Workspace } from "@/lib/types";
+import { loadSchedule, toDraftSchedule } from "@/lib/document-data";
+import type { DocumentItem, DocumentRow, DocumentStatus, DocumentType, ScheduleRow, Workspace } from "@/lib/types";
 
 type Supabase = Awaited<ReturnType<typeof requireWorkspace>>["supabase"];
 type EditableType = Extract<DocumentType, "quotation" | "invoice" | "delivery_note">;
@@ -34,7 +37,21 @@ async function saveDraft(supabase: Supabase, id: string, payload: DraftPayload) 
   const items = payload.items
     .filter((i) => i.description.trim())
     .map((i) => ({ ...i, description: i.description.trim(), discount_amount: i.discount_amount || "0" }));
-  return supabase.rpc("save_document_draft", { p_id: id, p_header: payload.header, p_items: items });
+  const saved = await supabase.rpc("save_document_draft", { p_id: id, p_header: payload.header, p_items: items });
+  if (saved.error || !payload.schedule) return saved;
+  return supabase.rpc("save_payment_schedule", { p_quotation: id, p_rows: payload.schedule.filter((s) => s.label.trim()) });
+}
+
+// Installments must cover exactly the quotation's pre-VAT amount.
+function scheduleError({ header, items, schedule }: DraftPayload): string | null {
+  const rows = (schedule ?? []).filter((s) => s.label.trim());
+  if (rows.length === 0) return null;
+  if (rows.some((r) => !(Number(r.percent || r.amount) > 0))) return "ใส่สัดส่วนหรือจำนวนเงินของทุกงวด";
+  if (rows.some((r) => r.due_rule === "fixed_date" && !r.due_date)) return "ใส่วันที่ของงวดที่กำหนดเป็นวันที่";
+  const t = computeTotals(items.filter((i) => i.description.trim()), { discount: header.discount_amount, whtRate: header.wht_rate });
+  const base = t.subtotal - t.discount;
+  const mismatch = scheduleMismatch(rows.map((r) => ({ percent: r.percent || null, amount: r.amount || null })), base);
+  return mismatch ? `งวดชำระรวมกัน ${formatMoney(mismatch.sum)} บาท ต้องเท่ากับยอดก่อนภาษี ${formatMoney(base)} บาท` : null;
 }
 
 async function logEvent(supabase: Supabase, doc: Pick<DocumentRow, "id" | "workspace_id">, event: string, metadata = {}) {
@@ -102,7 +119,7 @@ export async function saveDraftAction(type: DocumentType, id: string, payload: D
 }
 
 export async function issueDocumentAction(type: DocumentType, id: string, payload: DraftPayload): Promise<ActionResult> {
-  const invalid = validate(payload, true);
+  const invalid = validate(payload, true) ?? scheduleError(payload);
   if (invalid) return { error: invalid };
 
   const { supabase } = await requireWorkspace();
@@ -221,6 +238,7 @@ export async function duplicateDocumentAction(type: EditableType, id: string): P
       notes: doc.notes ?? "",
     },
     items: toDraftItems((srcItems ?? []) as DocumentItem[]),
+    schedule: type === "quotation" ? toDraftSchedule(await loadSchedule(supabase, doc.id)) : undefined,
   });
   if (saved.error) return { error: toThaiError(saved.error) };
 
@@ -334,6 +352,84 @@ export async function createInvoiceFromQuotationAction(quotationId: string, perc
     items,
   });
   if (saved.error) return { error: toThaiError(saved.error) };
+
+  revalidatePath(docPath("invoice"));
+  revalidatePath(docPath("quotation", quote.id));
+  redirect(docPath("invoice", created.id));
+}
+
+// Bills one installment of an accepted quotation's payment schedule and links
+// the invoice to it. An installment whose invoice was voided can be billed again.
+export async function createInvoiceFromScheduleAction(scheduleId: string): Promise<ActionResult> {
+  const { supabase, workspace } = await requireWorkspace();
+  const { data: row } = await supabase
+    .from("payment_schedules")
+    .select("id, quotation_id, label, percent, amount, due_rule, due_date, invoice_id")
+    .eq("id", scheduleId)
+    .maybeSingle();
+  if (!row) return { error: "ไม่พบงวดชำระ" };
+  const installment = row as ScheduleRow & { id: string; quotation_id: string };
+
+  const [{ data: src }, { data: linked }] = await Promise.all([
+    supabase.from("documents").select("*").eq("id", installment.quotation_id).single(),
+    installment.invoice_id
+      ? supabase.from("documents").select("status").eq("id", installment.invoice_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const quote = src as DocumentRow | null;
+  if (!quote) return { error: "ไม่พบใบเสนอราคา" };
+  if (quote.status !== "accepted") return { error: "ออกใบแจ้งหนี้ได้เมื่อลูกค้าตอบรับใบเสนอราคาแล้ว" };
+  if (linked && (linked as Pick<DocumentRow, "status">).status !== "void") return { error: "งวดนี้ออกใบแจ้งหนี้แล้ว" };
+
+  const base = scheduleBase(quote);
+  const amount = installmentAmount(installment, base);
+  const percent = Math.round(installmentPercent(installment, base) * 100) / 100;
+  const dates = defaultDates("invoice", workspace);
+  // A dated installment is due on its own date, unless that date has passed.
+  const dueDate = installment.due_rule === "fixed_date" && installment.due_date && installment.due_date >= dates.issue_date ? installment.due_date : dates.due_date;
+
+  const { data: created, error } = await supabase
+    .from("documents")
+    .insert({
+      workspace_id: workspace.id,
+      type: "invoice",
+      client_id: quote.client_id,
+      project_id: quote.project_id,
+      source_document_id: quote.id,
+    })
+    .select("id")
+    .single();
+  if (error) return { error: toThaiError(error) };
+
+  const saved = await saveDraft(supabase, created.id, {
+    header: {
+      ...dates,
+      due_date: dueDate,
+      client_id: quote.client_id,
+      title: quote.title ?? "",
+      discount_amount: "0",
+      vat_rate: quote.vat_rate,
+      wht_rate: quote.wht_rate,
+      scope_of_work: "",
+      exclusions: "",
+      revisions_included: "",
+      payment_terms: quote.payment_terms ?? "",
+      notes: `อ้างอิงใบเสนอราคาเลขที่ ${quote.number}`,
+    },
+    items: [
+      {
+        description: `${installment.label} (${percent}%) ตามใบเสนอราคาเลขที่ ${quote.number}${quote.title ? ` (${quote.title})` : ""}`,
+        quantity: "1",
+        unit: "งวด",
+        unit_price: amount.toFixed(2),
+        discount_amount: "0",
+      },
+    ],
+  });
+  if (saved.error) return { error: toThaiError(saved.error) };
+
+  const link = await supabase.from("payment_schedules").update({ invoice_id: created.id }).eq("id", installment.id);
+  if (link.error) return { error: toThaiError(link.error) };
 
   revalidatePath(docPath("invoice"));
   revalidatePath(docPath("quotation", quote.id));

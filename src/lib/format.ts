@@ -59,9 +59,9 @@ export function statusLabel(status: DocumentStatus, type?: DocumentType) {
 }
 
 export const clientStatusLabel: Record<ClientStatus, string> = {
-  lead: "Lead",
+  lead: "ว่าที่ลูกค้า",
   active: "ลูกค้าปัจจุบัน",
-  inactive: "ไม่ active",
+  inactive: "ลูกค้าเก่า",
 };
 
 export const clientKindLabel: Record<ClientKind, string> = {

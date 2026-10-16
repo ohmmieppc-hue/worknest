@@ -172,3 +172,16 @@ export interface DocumentRevision {
   requested_by: "owner" | "client" | "system";
   created_at: string;
 }
+
+export type ScheduleDueRule = "on_accept" | "on_milestone" | "fixed_date" | "manual";
+
+/** One installment of a quotation's payment schedule (pre-VAT, pre-WHT share). */
+export interface ScheduleRow {
+  id?: string;
+  label: string;
+  percent: string | null;
+  amount: string | null;
+  due_rule: ScheduleDueRule;
+  due_date: string | null;
+  invoice_id?: string | null;
+}
