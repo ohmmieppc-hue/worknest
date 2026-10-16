@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, EmptyState, LinkButton, PageHeader } from "@/components/ui";
 import { DocumentStatusBadge } from "@/components/status-badge";
-import { docPath, DOC_META } from "@/lib/documents";
-import { formatDate, formatMoney, todayISO } from "@/lib/format";
+import { docPath, DOC_META, eventLabel } from "@/lib/documents";
+import { formatDate, formatDateTime, formatMoney, todayISO } from "@/lib/format";
 import { requireWorkspace } from "@/lib/workspace";
 import type { DocumentRow, DocumentType, InvoiceBalance } from "@/lib/types";
 import { Suspense } from "react";
@@ -20,15 +20,6 @@ type EventRow = {
   actor_name: string | null;
   created_at: string;
   document: { id: string; type: DocumentType; number: string | null } | null;
-};
-
-const eventLabel: Record<string, string> = {
-  issued: "ออกเอกสาร",
-  sent: "ส่งให้ลูกค้า",
-  viewed: "ลูกค้าเปิดดู",
-  accepted: "ตอบรับ",
-  rejected: "ปฏิเสธ",
-  voided: "ยกเลิก",
 };
 
 // The Suspense boundary lives inside the page so client navigations into this
@@ -172,7 +163,7 @@ async function DashboardPageContent() {
                 <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
                   <span>
                     {e.actor === "client" && <span className="mr-1.5 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">ลูกค้า</span>}
-                    {eventLabel[e.event] ?? e.event}
+                    {eventLabel(e.event, e.document?.type)}
                     {e.document && (
                       <>
                         {" "}
@@ -200,9 +191,6 @@ function addDays(iso: string, days: number) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
-
-const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" });
-const formatDateTime = (iso: string) => dateTime.format(new Date(iso));
 
 function Stat({
   label,

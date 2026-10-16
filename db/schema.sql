@@ -782,7 +782,7 @@ create trigger document_revisions_guard
 -- Replace a draft's header fields and line items in one transaction.
 -- SECURITY INVOKER: RLS still applies to every statement.
 -- p_header keys: client_id, title, issue_date, valid_until, due_date,
---   discount_amount, wht_rate, scope_of_work, exclusions, revisions_included,
+--   discount_amount, vat_rate, wht_rate, scope_of_work, exclusions, revisions_included,
 --   payment_terms, notes
 -- p_items: [{description, quantity, unit, unit_price, discount_amount, service_item_id}]
 create function save_document_draft(p_id uuid, p_header jsonb, p_items jsonb) returns void
@@ -822,6 +822,7 @@ begin
     valid_until        = case when type = 'quotation' then nullif(p_header ->> 'valid_until', '')::date end,
     due_date           = case when type = 'invoice'   then nullif(p_header ->> 'due_date', '')::date end,
     discount_amount    = coalesce(nullif(p_header ->> 'discount_amount', '')::numeric, 0),
+    vat_rate           = coalesce(nullif(p_header ->> 'vat_rate', '')::numeric, 0),
     wht_rate           = coalesce(nullif(p_header ->> 'wht_rate', '')::numeric, 0),
     scope_of_work      = nullif(p_header ->> 'scope_of_work', ''),
     exclusions         = nullif(p_header ->> 'exclusions', ''),
@@ -837,9 +838,12 @@ end $$;
 create function issue_receipt_for_payment(p_payment_id uuid) returns uuid
 language plpgsql as $$
 declare
-  v_pay  payments%rowtype;
-  v_inv  documents%rowtype;
-  v_id   uuid;
+  v_pay      payments%rowtype;
+  v_inv      documents%rowtype;
+  v_id       uuid;
+  v_settled  numeric(14,2);
+  v_base     numeric(14,2);
+  v_try      numeric(14,2);
 begin
   select * into v_pay from payments where id = p_payment_id for update;
   if not found then
@@ -852,14 +856,29 @@ begin
 
   select * into v_inv from documents where id = v_pay.invoice_id;
 
-  insert into documents (workspace_id, type, client_id, project_id, source_document_id, issue_date, title)
-  values (v_pay.workspace_id, 'receipt', v_inv.client_id, v_inv.project_id, v_inv.id, v_pay.received_on, v_inv.title)
+  v_settled := v_pay.cash_amount + v_pay.wht_amount;
+
+  -- VAT on services is due when payment is received, so a receipt for a VAT
+  -- invoice is also the tax invoice (ใบเสร็จรับเงิน/ใบกำกับภาษี): the amount
+  -- received is split into a pre-VAT base and VAT that add back up to it.
+  v_base := v_settled;
+  if v_inv.vat_rate > 0 then
+    v_base := round(v_settled * 100 / (100 + v_inv.vat_rate), 2);
+    foreach v_try in array array[v_base, v_base - 0.01, v_base + 0.01] loop
+      if v_try + round(v_try * v_inv.vat_rate / 100, 2) = v_settled then
+        v_base := v_try;
+        exit;
+      end if;
+    end loop;
+  end if;
+
+  insert into documents (workspace_id, type, client_id, project_id, source_document_id, issue_date, title, vat_rate)
+  values (v_pay.workspace_id, 'receipt', v_inv.client_id, v_inv.project_id, v_inv.id, v_pay.received_on, v_inv.title, v_inv.vat_rate)
   returning id into v_id;
 
-  -- One line for the settled amount (cash + tax withheld by the client).
+  -- One line for the settled amount (cash + tax withheld by the client), before VAT.
   insert into document_items (workspace_id, document_id, description, quantity, unit_price)
-  values (v_pay.workspace_id, v_id, 'รับชำระตามใบแจ้งหนี้เลขที่ ' || v_inv.number, 1,
-          v_pay.cash_amount + v_pay.wht_amount);
+  values (v_pay.workspace_id, v_id, 'รับชำระตามใบแจ้งหนี้เลขที่ ' || v_inv.number, 1, v_base);
 
   update documents set status = 'issued' where id = v_id;
   update payments set receipt_id = v_id where id = p_payment_id;

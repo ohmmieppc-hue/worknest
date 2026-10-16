@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { buttonClass, Card } from "@/components/ui";
 import { DocumentPaper, TotalRow } from "@/components/document-paper";
 import { PaymentInstructions } from "@/components/payment-instructions";
-import { DOC_META } from "@/lib/documents";
+import { docLabel } from "@/lib/documents";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import { logoUrl } from "@/lib/logo";
 import { RevisionCounter, RevisionList } from "@/components/revisions";
@@ -36,7 +36,7 @@ async function Portal({ params }: Pick<PageProps<"/p/[token]">, "params">) {
   if (!supabase || !data) return <InvalidLink />;
 
   const doc = data.document;
-  const meta = DOC_META[doc.type];
+  const meta = docLabel(doc);
 
   // The owner previewing their own link shouldn't count as the client viewing it.
   const {

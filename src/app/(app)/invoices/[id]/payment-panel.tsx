@@ -23,9 +23,11 @@ interface Props {
   canRecord: boolean;
   payments: PaymentRow[];
   defaults: { cashDue: number; whtDue: number; today: string };
+  /** Recording a payment is the page's next step (primary button). */
+  emphasize?: boolean;
 }
 
-export function PaymentPanel({ invoiceId, canRecord, payments, defaults }: Props) {
+export function PaymentPanel({ invoiceId, canRecord, payments, defaults, emphasize = true }: Props) {
   const router = useRouter();
   const [state, formAction] = useActionState<PaymentFormState, FormData>(recordPaymentAction.bind(null, invoiceId), {});
   // The form stays open only for the save count it was opened at, so it
@@ -47,21 +49,24 @@ export function PaymentPanel({ invoiceId, canRecord, payments, defaults }: Props
   }
 
   return (
-    <Card className="mb-6 overflow-hidden">
+    <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
-        <h2 className="font-semibold">การรับชำระเงิน</h2>
+        <h2 className="text-sm font-semibold">การรับชำระเงิน</h2>
         {canRecord && !open && (
-          <Button onClick={() => setOpen(true)}>+ บันทึกรับเงิน</Button>
+          <Button variant={emphasize ? "primary" : "secondary"} onClick={() => setOpen(true)}>
+            + บันทึกรับเงิน
+          </Button>
         )}
       </div>
 
       {open && (
         <form action={formAction} className="border-b border-stone-200 bg-stone-50/60 p-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="วันที่รับเงิน">
+          {/* Two columns: the panel sits in the narrow side column on wide screens. */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="วันที่รับเงิน" className="col-span-2">
               <input name="received_on" type="date" required defaultValue={defaults.today} className={inputClass} />
             </Field>
-            <Field label="เงินที่ได้รับจริง (บาท)">
+            <Field label="รับจริง (บาท)">
               <input
                 name="cash_amount"
                 type="number"
@@ -72,7 +77,7 @@ export function PaymentPanel({ invoiceId, canRecord, payments, defaults }: Props
                 className={`${inputClass} text-right`}
               />
             </Field>
-            <Field label="ลูกค้าหัก ณ ที่จ่าย (บาท)">
+            <Field label="หัก ณ ที่จ่าย (บาท)">
               <input
                 name="wht_amount"
                 type="number"
@@ -85,7 +90,7 @@ export function PaymentPanel({ invoiceId, canRecord, payments, defaults }: Props
                 className={`${inputClass} text-right`}
               />
             </Field>
-            <Field label="ช่องทาง">
+            <Field label="ช่องทาง" className="col-span-2">
               <select name="method" defaultValue="transfer" className={inputClass}>
                 {(Object.keys(paymentMethodLabel) as PaymentMethod[]).map((m) => (
                   <option key={m} value={m}>
@@ -94,10 +99,10 @@ export function PaymentPanel({ invoiceId, canRecord, payments, defaults }: Props
                 ))}
               </select>
             </Field>
-            <Field label="เลขอ้างอิง / หมายเหตุการโอน" className="sm:col-span-2">
+            <Field label="เลขอ้างอิง / หมายเหตุการโอน" className="col-span-2">
               <input name="reference" className={inputClass} />
             </Field>
-            <Field label="ประเภทเงินได้ (ใช้สรุปยื่นภาษี)" className="sm:col-span-2">
+            <Field label="ประเภทเงินได้ (ใช้สรุปยื่นภาษี)" className="col-span-2">
               <select name="income_type" defaultValue="40_2" className={inputClass}>
                 <option value="40_2">40(2) ค่าจ้างทำงาน / ค่าบริการ</option>
                 <option value="40_8">40(8) เงินได้อื่น ๆ</option>
@@ -105,10 +110,10 @@ export function PaymentPanel({ invoiceId, canRecord, payments, defaults }: Props
               </select>
             </Field>
           </div>
-          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <div className="mt-4 flex flex-col gap-2 text-sm">
             {Number(wht) > 0 && (
               <label className="flex items-center gap-2">
-                <input type="checkbox" name="wht_cert_received" className="size-4 accent-brand-600" />
+                <input type="checkbox" name="wht_cert_received" className="size-4 shrink-0 accent-brand-600" />
                 ได้รับหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) แล้ว
               </label>
             )}
@@ -132,80 +137,63 @@ export function PaymentPanel({ invoiceId, canRecord, payments, defaults }: Props
       {payments.length === 0 ? (
         <p className="px-4 py-6 text-sm text-stone-500">ยังไม่มีการรับเงิน</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-stone-50 text-left text-xs text-stone-500">
-              <tr>
-                <th className="px-4 py-2 font-medium">วันที่</th>
-                <th className="px-4 py-2 text-right font-medium">รับจริง</th>
-                <th className="px-4 py-2 text-right font-medium">หัก ณ ที่จ่าย</th>
-                <th className="px-4 py-2 font-medium">ช่องทาง</th>
-                <th className="px-4 py-2 font-medium">50 ทวิ</th>
-                <th className="px-4 py-2 font-medium">ใบเสร็จ</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {payments.map((p) => {
-                const liveReceipt = p.receipt && p.receipt.status !== "void" ? p.receipt : null;
-                return (
-                  <tr key={p.id}>
-                    <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(p.received_on)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatMoney(p.cash_amount)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{Number(p.wht_amount) ? formatMoney(p.wht_amount) : "—"}</td>
-                    <td className="px-4 py-2.5">
-                      {paymentMethodLabel[p.method]}
-                      {p.reference && <div className="text-xs text-stone-500">{p.reference}</div>}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {p.wht_cert_status === "not_applicable" && "—"}
-                      {p.wht_cert_status === "received" && <span className="text-emerald-700">ได้รับแล้ว</span>}
-                      {p.wht_cert_status === "pending" && (
-                        <button
-                          type="button"
-                          onClick={() => run(() => markWhtCertReceivedAction(p.id, invoiceId))}
-                          disabled={pending}
-                          className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
-                        >
-                          รอรับ · ทำเครื่องหมายว่าได้รับ
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
-                      {liveReceipt ? (
-                        <Link href={`/receipts/${liveReceipt.id}`} className="font-medium text-brand-700 hover:underline">
-                          {liveReceipt.number}
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => run(() => issueReceiptAction(p.id, invoiceId))}
-                          disabled={pending}
-                          className="text-sm font-medium text-brand-700 hover:underline"
-                        >
-                          ออกใบเสร็จ
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {!liveReceipt && (
-                        <button
-                          type="button"
-                          onClick={() => confirm("ลบรายการรับเงินนี้?") && run(() => deletePaymentAction(p.id, invoiceId))}
-                          disabled={pending}
-                          aria-label="ลบรายการรับเงิน"
-                          className="rounded p-1 text-stone-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-stone-100 text-sm">
+          {payments.map((p) => {
+            const liveReceipt = p.receipt && p.receipt.status !== "void" ? p.receipt : null;
+            return (
+              <li key={p.id} className="space-y-1.5 px-4 py-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-medium">{formatDate(p.received_on)}</span>
+                  <span className="font-medium tabular-nums">{formatMoney(p.cash_amount)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 text-xs text-stone-500">
+                  <span>
+                    {paymentMethodLabel[p.method]}
+                    {p.reference && ` · ${p.reference}`}
+                  </span>
+                  {Number(p.wht_amount) > 0 && <span className="tabular-nums">หัก ณ ที่จ่าย {formatMoney(p.wht_amount)}</span>}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-0.5">
+                  {liveReceipt ? (
+                    <Link href={`/receipts/${liveReceipt.id}`} className="font-medium text-brand-700 hover:underline">
+                      ใบเสร็จ {liveReceipt.number}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => run(() => issueReceiptAction(p.id, invoiceId))}
+                      disabled={pending}
+                      className="font-medium text-brand-700 hover:underline"
+                    >
+                      ออกใบเสร็จ
+                    </button>
+                  )}
+                  {p.wht_cert_status === "received" && <span className="text-xs text-emerald-700">ได้รับ 50 ทวิ แล้ว</span>}
+                  {p.wht_cert_status === "pending" && (
+                    <button
+                      type="button"
+                      onClick={() => run(() => markWhtCertReceivedAction(p.id, invoiceId))}
+                      disabled={pending}
+                      className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                    >
+                      รอ 50 ทวิ · กดเมื่อได้รับ
+                    </button>
+                  )}
+                  {!liveReceipt && (
+                    <button
+                      type="button"
+                      onClick={() => confirm("ลบรายการรับเงินนี้?") && run(() => deletePaymentAction(p.id, invoiceId))}
+                      disabled={pending}
+                      className="ml-auto text-xs text-stone-400 hover:text-red-600"
+                    >
+                      ลบ
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
       {rowError && (
         <div className="px-4 pb-4">

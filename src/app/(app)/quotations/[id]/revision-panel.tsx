@@ -21,7 +21,7 @@ export function RevisionPanel({
   const [state, action] = useActionState<RevisionState, FormData>(logRevisionAction.bind(null, quotationId), {});
 
   return (
-    <Card className="mb-6 p-5">
+    <Card className="p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">รอบแก้ไขที่ใช้ไป</h2>
@@ -45,7 +45,7 @@ export function RevisionPanel({
 
       {canLog && (
         // key resets the textarea after each successful save.
-        <form key={state.saved ?? 0} action={action} className="mt-3 flex flex-col gap-2 border-t border-stone-100 pt-3 sm:flex-row sm:items-start">
+        <form key={state.saved ?? 0} action={action} className="mt-3 flex flex-col gap-2 border-t border-stone-100 pt-3">
           <textarea
             name="note"
             rows={2}
@@ -54,7 +54,7 @@ export function RevisionPanel({
             placeholder="แก้อะไรในรอบนี้ เช่น เปลี่ยนสีโลโก้ตามคอมเมนต์ลูกค้า"
             className={inputClass}
           />
-          <SubmitButton className="shrink-0">บันทึกรอบแก้ไข</SubmitButton>
+          <SubmitButton className="self-start">บันทึกรอบแก้ไข</SubmitButton>
         </form>
       )}
       <ErrorMessage>{state.error}</ErrorMessage>

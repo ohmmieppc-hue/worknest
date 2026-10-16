@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Button, ErrorMessage, Field, inputClass } from "@/components/ui";
 import { signIn, signUp, type AuthState } from "./actions";
@@ -37,6 +38,11 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: "signin" |
             className={inputClass}
           />
         </Field>
+        {mode === "signin" && (
+          <Link href="/forgot-password" className="float-right text-sm text-stone-500 hover:text-brand-700 hover:underline">
+            ลืมรหัสผ่าน?
+          </Link>
+        )}
         <Field label="รหัสผ่าน" hint={mode === "signup" ? "อย่างน้อย 8 ตัวอักษร" : undefined}>
           <input
             name="password"

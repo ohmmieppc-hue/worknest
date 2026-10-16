@@ -24,6 +24,12 @@ export function formatDate(value: string | null | undefined) {
   return dateFmt.format(d);
 }
 
+const dateTimeFmt = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" });
+
+export function formatDateTime(value: string | null | undefined) {
+  return value ? dateTimeFmt.format(new Date(value)) : "—";
+}
+
 export function todayISO() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
 }

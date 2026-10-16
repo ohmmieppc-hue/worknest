@@ -35,9 +35,8 @@ async function ClientPageContent({ params }: PageProps<"/clients/[id]">) {
       .from("documents")
       .select("id, type, number, title, status, issue_date, due_date, total")
       .eq("client_id", id)
-      .in("type", ["quotation", "invoice"])
       .order("created_at", { ascending: false })
-      .limit(100),
+      .limit(200),
     supabase.from("invoice_balances").select("*").eq("client_id", id),
   ]);
   if (!client) notFound();
@@ -45,6 +44,8 @@ async function ClientPageContent({ params }: PageProps<"/clients/[id]">) {
   const all = (docs ?? []) as DocRow[];
   const quotations = all.filter((d) => d.type === "quotation");
   const invoices = all.filter((d) => d.type === "invoice");
+  const deliveries = all.filter((d) => d.type === "delivery_note");
+  const receipts = all.filter((d) => d.type === "receipt" && d.status !== "draft");
   const balances = (balanceData ?? []) as InvoiceBalance[];
   const balanceById = new Map(balances.map((b) => [b.invoice_id, b]));
 
@@ -112,6 +113,32 @@ async function ClientPageContent({ params }: PageProps<"/clients/[id]">) {
                 meta={`${q.number ?? "ยังไม่มีเลขที่"} · ${formatDate(q.issue_date)}`}
                 amount={formatMoney(q.total)}
                 badge={<DocumentStatusBadge status={q.status} />}
+              />
+            ))}
+          </DocList>
+
+          <DocList title="ใบส่งมอบงาน" empty="ยังไม่มีใบส่งมอบงาน">
+            {deliveries.map((dn) => (
+              <DocItem
+                key={dn.id}
+                href={`/delivery-notes/${dn.id}`}
+                title={dn.title || dn.number || "ใบส่งมอบงาน (ร่าง)"}
+                meta={`${dn.number ?? "ยังไม่มีเลขที่"} · ${formatDate(dn.issue_date)}`}
+                amount=""
+                badge={<DocumentStatusBadge status={dn.status} type="delivery_note" />}
+              />
+            ))}
+          </DocList>
+
+          <DocList title="ใบเสร็จรับเงิน" empty="ยังไม่มีใบเสร็จ">
+            {receipts.map((rc) => (
+              <DocItem
+                key={rc.id}
+                href={`/receipts/${rc.id}`}
+                title={rc.title || rc.number || "ใบเสร็จรับเงิน"}
+                meta={`${rc.number} · ${formatDate(rc.issue_date)}`}
+                amount={formatMoney(rc.total)}
+                badge={rc.status === "void" ? <DocumentStatusBadge status={rc.status} /> : null}
               />
             ))}
           </DocList>

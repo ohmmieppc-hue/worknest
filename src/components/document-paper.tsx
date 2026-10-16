@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
 import { bahtText } from "@/lib/bahttext";
-import { DOC_META } from "@/lib/documents";
+import { docLabel } from "@/lib/documents";
 import { formatDate, formatMoney } from "@/lib/format";
 import { logoUrl } from "@/lib/logo";
 import type { ClientResponse, DocumentItem, DocumentRow, PartySnapshot } from "@/lib/types";
@@ -20,7 +20,7 @@ interface Props {
 // Read-only rendering of an issued document, built only from its snapshots so
 // later edits to the client or workspace never change it.
 export function DocumentPaper({ doc, items, reference, children, response }: Props) {
-  const meta = DOC_META[doc.type];
+  const meta = docLabel(doc);
   // Delivery notes list what is handed over; prices stay on the quotation.
   const priced = doc.type !== "delivery_note";
   const hasWht = Number(doc.wht_amount) > 0;
@@ -126,7 +126,7 @@ export function DocumentPaper({ doc, items, reference, children, response }: Pro
       {priced && (
         <div className="mt-6 flex flex-wrap justify-between gap-6 border-t border-stone-200 pt-6">
           <p className="max-w-sm self-end text-sm text-stone-600">({bahtText(hasWht ? doc.amount_payable : doc.total)})</p>
-          <dl className="w-full max-w-xs space-y-1.5 text-sm">
+          <dl className="ml-auto w-full max-w-xs space-y-1.5 text-sm">
             <TotalRow label="รวมเป็นเงิน" value={doc.subtotal} />
             {Number(doc.discount_amount) > 0 && <TotalRow label="ส่วนลด" value={-Number(doc.discount_amount)} />}
             {Number(doc.vat_amount) > 0 && <TotalRow label={`ภาษีมูลค่าเพิ่ม ${Number(doc.vat_rate)}%`} value={doc.vat_amount} />}

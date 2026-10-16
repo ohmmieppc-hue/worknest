@@ -265,6 +265,23 @@ digest = (await db.query(`select d from notify_due_digest('s3cret', current_date
 ok('digest skips overdue by 2 days', !digest.some(d => d.items.some(i => i.document_id === inv5)));
 await expectError('digest rejects wrong secret', `select notify_due_digest('nope')`, [], /forbidden/);
 
+// VAT: a VAT invoice's receipt is the tax invoice, split from what was received
+await db.query(`update workspaces set vat_registered = true where id=$1`, [ws]);
+const { id: vinv } = await one(`insert into documents (workspace_id, type, client_id) values ($1,'invoice',$2) returning id`, [ws, client]);
+await db.query(`select save_document_draft($1, $2, $3)`, [vinv,
+  JSON.stringify({ vat_rate: '7', wht_rate: '3' }), JSON.stringify([{ description: 'ออกแบบ', quantity: '1', unit_price: '10000' }])]);
+let vi = await one(`select vat_rate, vat_amount, total, wht_amount, amount_payable from documents where id=$1`, [vinv]);
+ok('draft saves vat_rate', vi.vat_rate === '7.00' && vi.vat_amount === '700.00' && vi.total === '10700.00' && vi.amount_payable === '10400.00',
+  JSON.stringify(vi));
+await db.query(`update documents set status='issued' where id=$1`, [vinv]);
+const { id: vpay } = await one(`insert into payments (workspace_id, invoice_id, cash_amount, wht_amount, wht_cert_status, income_type)
+  values ($1,$2,5000,0,'not_applicable','40_2') returning id`, [ws, vinv]);
+const { r: vrc } = await one(`select issue_receipt_for_payment($1) r`, [vpay]);
+const vr = await one(`select vat_rate, subtotal, vat_amount, total from documents where id=$1`, [vrc]);
+ok('vat receipt splits amount received', vr.vat_rate === '7.00' && vr.total === '5000.00' && Number(vr.subtotal) + Number(vr.vat_amount) === 5000,
+  JSON.stringify(vr));
+await db.query(`update workspaces set vat_registered = false where id=$1`, [ws]);
+
 // Workspace delete cascades even with issued docs
 await db.query(`delete from workspaces where id=$1`, [ws]);
 ok('workspace delete cascades', (await one(`select count(*)::int c from documents`)).c === 0);

@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PageHeader } from "@/components/ui";
+import { AmountRows, DocumentDetail, SidePanel } from "@/components/document-detail";
 import { DocumentStatusBadge } from "@/components/status-badge";
 import { DocumentActions } from "@/components/document-actions";
 import { DocumentExport } from "@/components/document-export";
 import { SharePanel } from "@/components/share-panel";
 import { DocumentPaper, TotalRow, VoidNotice } from "@/components/document-paper";
 import { loadDocument, loadShareLinks, loadDocumentNumber } from "@/lib/document-data";
-import { formatDate } from "@/lib/format";
+import { docLabel } from "@/lib/documents";
+import { formatDate, formatMoney } from "@/lib/format";
 import { paymentMethodLabel } from "@/lib/payments";
 import type { Payment } from "@/lib/types";
+import { DocumentHistory } from "@/components/document-history";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/page-skeleton";
 
@@ -35,36 +37,48 @@ async function ReceiptPageContent({ params }: PageProps<"/receipts/[id]">) {
   ]);
   const payment = paymentData as Payment | null;
 
+  const client = doc.buyer_snapshot?.name ?? doc.buyer_snapshot?.legal_name;
+
   return (
-    <div>
-      {/* Everything above the document itself is screen-only. */}
-      <div className="print:hidden">
-        {invoice && (
-          <div className="mb-2 text-sm">
-            <Link href={`/invoices/${invoice.id}`} className="text-stone-500 hover:text-stone-800">
-              ← ใบแจ้งหนี้ {invoice.number}
-            </Link>
-          </div>
-        )}
-        <PageHeader title={`ใบเสร็จรับเงิน ${doc.number}`} actions={<DocumentStatusBadge status={doc.status} />} />
-
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-          {doc.status !== "void" ? (
-            <div>
-              <DocumentActions type="receipt" id={doc.id} status={doc.status} />
-              <p className="mt-2 text-xs text-stone-500">ยกเลิกใบเสร็จได้หากออกผิด แล้วออกใบใหม่จากหน้าใบแจ้งหนี้</p>
-            </div>
-          ) : (
-            <span />
+    <DocumentDetail
+      back={invoice ? { href: `/invoices/${invoice.id}`, label: `ใบแจ้งหนี้ ${invoice.number}` } : { href: "/receipts", label: "ใบเสร็จทั้งหมด" }}
+      title={`${docLabel(doc).label} ${doc.number}`}
+      badges={<DocumentStatusBadge status={doc.status} />}
+      subtitle={[client, doc.title].filter(Boolean).join(" · ")}
+      toolbar={<DocumentExport id={doc.id} />}
+      notices={doc.status === "void" ? <VoidNotice doc={doc} /> : null}
+      primary={
+        <>
+          {payment && (
+            <SidePanel title="การรับชำระ">
+              <AmountRows
+                rows={[
+                  { label: "วันที่รับเงิน", value: formatDate(payment.received_on) },
+                  { label: "ช่องทาง", value: paymentMethodLabel[payment.method] },
+                  { label: "รับเป็นเงิน", value: formatMoney(payment.cash_amount) },
+                  ...(Number(payment.wht_amount) > 0 ? [{ label: "ภาษีหัก ณ ที่จ่าย", value: formatMoney(payment.wht_amount), tone: "muted" as const }] : []),
+                  { label: "รวมรับชำระ", value: formatMoney(Number(payment.cash_amount) + Number(payment.wht_amount)), strong: true },
+                ]}
+              />
+            </SidePanel>
           )}
-          <DocumentExport id={doc.id} />
-        </div>
-
-        <VoidNotice doc={doc} />
-
-        {doc.status !== "void" && <SharePanel type="receipt" documentId={doc.id} links={shareLinks} />}
-      </div>
-
+          {doc.status !== "void" && (
+            <SidePanel title="การดำเนินการ">
+              <div className="p-4">
+                <DocumentActions type="receipt" id={doc.id} status={doc.status} />
+                <p className="mt-2 text-xs text-stone-500">ยกเลิกใบเสร็จได้หากออกผิด แล้วออกใบใหม่จากหน้าใบแจ้งหนี้</p>
+              </div>
+            </SidePanel>
+          )}
+        </>
+      }
+      secondary={
+        <>
+          {doc.status !== "void" && <SharePanel type="receipt" documentId={doc.id} links={shareLinks} />}
+          <DocumentHistory documentId={doc.id} type="receipt" />
+        </>
+      }
+    >
       <DocumentPaper
         doc={doc}
         items={items}
@@ -88,6 +102,6 @@ async function ReceiptPageContent({ params }: PageProps<"/receipts/[id]">) {
           </div>
         )}
       </DocumentPaper>
-    </div>
+    </DocumentDetail>
   );
 }

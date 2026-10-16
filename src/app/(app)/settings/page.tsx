@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, LinkButton, PageHeader } from "@/components/ui";
 import { requireWorkspace } from "@/lib/workspace";
 import { SettingsForm } from "./settings-form";
 import { LogoForm } from "./logo-form";
@@ -27,7 +27,14 @@ async function SettingsPageContent() {
 
   return (
     <div className="max-w-4xl">
-      <PageHeader title="ตั้งค่า" />
+      <PageHeader
+        title="ตั้งค่า"
+        actions={
+          <LinkButton href="/reset-password" variant="secondary">
+            เปลี่ยนรหัสผ่าน
+          </LinkButton>
+        }
+      />
       <Card className="mb-6 p-6">
         <LogoForm key={logo?.storage_path ?? "none"} logoUrl={logoUrl(logo?.storage_path)} />
       </Card>

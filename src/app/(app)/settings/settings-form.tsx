@@ -49,6 +49,27 @@ export function SettingsForm({ workspace }: { workspace: Workspace }) {
         </Field>
       </Section>
 
+      <Section
+        title="ภาษีมูลค่าเพิ่ม (VAT)"
+        description="เปิดเมื่อจดทะเบียน VAT แล้วเท่านั้น (รายได้เกิน 1.8 ล้านบาทต่อปีต้องจด)"
+      >
+        <label className="flex items-start gap-3 text-sm sm:col-span-2">
+          <input
+            type="checkbox"
+            name="vat_registered"
+            defaultChecked={workspace.vat_registered}
+            className="mt-0.5 size-4 shrink-0 accent-brand-600"
+          />
+          <span>
+            <span className="font-medium">จดทะเบียนภาษีมูลค่าเพิ่มแล้ว</span>
+            <span className="mt-0.5 block text-stone-500">
+              ใบเสนอราคาและใบแจ้งหนี้ใหม่จะคิด VAT 7% (ปิดได้รายใบ) และใบเสร็จของใบแจ้งหนี้ที่มี VAT จะออกเป็น
+              “ใบเสร็จรับเงิน/ใบกำกับภาษี” เมื่อรับเงิน ต้องกรอกเลขประจำตัวผู้เสียภาษีด้านบน
+            </span>
+          </span>
+        </label>
+      </Section>
+
       <Section title="การรับเงิน" description="พร้อมเพย์ใช้สร้าง QR บนใบแจ้งหนี้ บัญชีธนาคารแสดงเป็นทางเลือกให้ลูกค้าโอน">
         <Field label="พร้อมเพย์" hint="เบอร์โทร 10 หลัก หรือเลข 13 หลัก" className="sm:col-span-2">
           <input name="promptpay_id" inputMode="numeric" maxLength={17} defaultValue={workspace.promptpay_id ?? ""} className={inputClass} />

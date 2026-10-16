@@ -79,6 +79,7 @@ export async function createDocumentAction(type: EditableType, formData: FormDat
       valid_until: dates.valid_until || null,
       due_date: dates.due_date || null,
       wht_rate: client.default_wht_rate,
+      vat_rate: workspace.vat_registered ? 7 : 0,
     })
     .select("id")
     .single();
@@ -211,6 +212,7 @@ export async function duplicateDocumentAction(type: EditableType, id: string): P
       client_id: doc.client_id,
       title: doc.title ?? "",
       discount_amount: doc.discount_amount,
+      vat_rate: doc.vat_rate,
       wht_rate: doc.wht_rate,
       scope_of_work: doc.scope_of_work ?? "",
       exclusions: doc.exclusions ?? "",
@@ -257,6 +259,7 @@ export async function createDeliveryNoteFromQuotationAction(quotationId: string)
       client_id: quote.client_id,
       title: quote.title ?? "",
       discount_amount: "0",
+      vat_rate: "0",
       wht_rate: "0",
       scope_of_work: "",
       exclusions: "",
@@ -320,6 +323,7 @@ export async function createInvoiceFromQuotationAction(quotationId: string, perc
       client_id: quote.client_id,
       title: quote.title ?? "",
       discount_amount: percent == null ? quote.discount_amount : "0",
+      vat_rate: quote.vat_rate,
       wht_rate: quote.wht_rate,
       scope_of_work: "",
       exclusions: "",

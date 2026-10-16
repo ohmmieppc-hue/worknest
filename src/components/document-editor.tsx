@@ -21,11 +21,13 @@ interface Props {
   items: DocumentItem[];
   clients: Pick<Client, "id" | "name">[];
   services: ServiceItem[];
+  /** The workspace is VAT-registered, so VAT can be charged. */
+  vatRegistered?: boolean;
 }
 
 // Draft editor shared by quotations, invoices and delivery notes (which list
 // what is handed over, without prices).
-export function DocumentEditor({ doc, items, clients, services }: Props) {
+export function DocumentEditor({ doc, items, clients, services, vatRegistered = false }: Props) {
   const isQuotation = doc.type === "quotation";
   const isDelivery = doc.type === "delivery_note";
   const label = DOC_META[doc.type].label;
@@ -41,6 +43,7 @@ export function DocumentEditor({ doc, items, clients, services }: Props) {
     valid_until: doc.valid_until ?? "",
     due_date: doc.due_date ?? "",
     discount_amount: Number(doc.discount_amount) ? num(doc.discount_amount) : "",
+    vat_rate: num(doc.vat_rate),
     wht_rate: num(doc.wht_rate),
     scope_of_work: doc.scope_of_work ?? "",
     exclusions: doc.exclusions ?? "",
@@ -97,10 +100,11 @@ ${s.description}` : s.name,
     });
 
   const activeRows = rows.filter((r) => r.description.trim());
-  const totals = computeTotals(activeRows, { discount: header.discount_amount, whtRate: header.wht_rate });
+  const totals = computeTotals(activeRows, { discount: header.discount_amount, whtRate: header.wht_rate, vatRate: header.vat_rate });
+  const hasVat = Number(header.vat_rate) > 0;
 
   const payload = (): DraftPayload => ({
-    header,
+    header: isDelivery ? { ...header, vat_rate: "0" } : header,
     items: rows.map((r) => ({
       service_item_id: r.service_item_id,
       description: r.description,
@@ -342,11 +346,29 @@ ${s.description}` : s.name,
                   className={`${inputClass} text-right`}
                 />
               </Field>
+              {/* Shown when registered, or to let an old VAT draft be switched off. */}
+              {(vatRegistered || hasVat) && (
+                <label className="col-span-2 flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={hasVat}
+                    onChange={(e) => setHeader((h) => ({ ...h, vat_rate: e.target.checked ? "7" : "0" }))}
+                    className="mt-0.5 size-4 shrink-0 accent-brand-600"
+                  />
+                  <span>
+                    คิดภาษีมูลค่าเพิ่ม 7%
+                    {hasVat && doc.type === "invoice" && (
+                      <span className="block text-xs text-stone-500">ใบเสร็จที่ออกตอนรับเงินจะเป็นใบเสร็จรับเงิน/ใบกำกับภาษี</span>
+                    )}
+                  </span>
+                </label>
+              )}
             </div>
 
             <dl className="space-y-1.5 text-sm">
               <TotalRow label="รวมเป็นเงิน" value={totals.subtotal} />
               {totals.discount > 0 && <TotalRow label="ส่วนลด" value={-totals.discount} />}
+              {hasVat && <TotalRow label={`ภาษีมูลค่าเพิ่ม ${Number(header.vat_rate)}%`} value={totals.vat} />}
               <TotalRow label="ยอดรวมทั้งสิ้น" value={totals.total} strong />
               {totals.wht > 0 && (
                 <>

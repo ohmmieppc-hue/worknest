@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
+import { DocumentDetail, SidePanel } from "@/components/document-detail";
 import { DocumentStatusBadge } from "@/components/status-badge";
 import { DocumentEditor } from "@/components/document-editor";
 import { DocumentPaper, VoidNotice } from "@/components/document-paper";
@@ -15,6 +16,7 @@ import {
 import { DocumentActions } from "@/components/document-actions";
 import { DocumentExport } from "@/components/document-export";
 import { SharePanel } from "@/components/share-panel";
+import { DocumentHistory } from "@/components/document-history";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/page-skeleton";
 
@@ -57,38 +59,56 @@ async function DeliveryNotePageContent({ params }: PageProps<"/delivery-notes/[i
 
   const [shareLinks, response] = await Promise.all([loadShareLinks(doc.id), loadClientResponse(supabase, doc)]);
 
+  const client = doc.buyer_snapshot?.name ?? doc.buyer_snapshot?.legal_name;
+  // Issued but never sent: sending the link is the next step.
+  const unsent = doc.status === "issued";
+
   return (
-    <div>
-      <div className="print:hidden">
-        <div className="mb-2 text-sm">
-          <Link href="/delivery-notes" className="text-stone-500 hover:text-stone-800">
-            ← ใบส่งมอบงานทั้งหมด
-          </Link>
-        </div>
-        <PageHeader
-          title={`ใบส่งมอบงาน ${doc.number}`}
-          description={quotation ? `ส่งมอบตามใบเสนอราคา ${quotation.number}` : undefined}
-          actions={<DocumentStatusBadge status={doc.status} type="delivery_note" />}
-        />
-
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-          <DocumentActions type="delivery_note" id={doc.id} status={doc.status} />
-          <DocumentExport id={doc.id} />
-        </div>
-
-        <VoidNotice doc={doc} />
-
-        {doc.status === "rejected" && (
-          <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            ลูกค้าขอแก้ไข{response?.note ? `: “${response.note}”` : ""} — แก้งานแล้วกด “คัดลอกเป็นฉบับใหม่” เพื่อส่งมอบรอบถัดไป
-            {quotation && " (นับเป็นรอบแก้ไขในใบเสนอราคาแล้ว)"}
-          </p>
-        )}
-
-        {doc.status !== "void" && <SharePanel type="delivery_note" documentId={doc.id} links={shareLinks} />}
-      </div>
-
+    <DocumentDetail
+      back={{ href: "/delivery-notes", label: "ใบส่งมอบงานทั้งหมด" }}
+      title={`ใบส่งมอบงาน ${doc.number}`}
+      badges={<DocumentStatusBadge status={doc.status} type="delivery_note" />}
+      subtitle={[client, quotation ? `ตามใบเสนอราคา ${quotation.number}` : null].filter(Boolean).join(" · ")}
+      toolbar={<DocumentExport id={doc.id} />}
+      notices={
+        <>
+          <VoidNotice doc={doc} />
+          {doc.status === "rejected" && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              ลูกค้าขอแก้ไข{response?.note ? `: “${response.note}”` : ""} — แก้งานแล้วกด “คัดลอกเป็นฉบับใหม่” เพื่อส่งมอบรอบถัดไป
+              {quotation && " (นับเป็นรอบแก้ไขในใบเสนอราคาแล้ว)"}
+            </p>
+          )}
+        </>
+      }
+      primary={
+        <>
+          {unsent && <SharePanel type="delivery_note" documentId={doc.id} links={shareLinks} suggested />}
+          <SidePanel title="การดำเนินการ">
+            <div className="p-4">
+              <DocumentActions
+                type="delivery_note"
+                id={doc.id}
+                status={doc.status}
+                hint={doc.status === "sent" || doc.status === "viewed" ? "รอลูกค้าตรวจรับผ่านลิงก์ ระบบจะแจ้งเมื่อลูกค้าตอบ" : undefined}
+              />
+            </div>
+          </SidePanel>
+          {quotationLink && (
+            <SidePanel title="อ้างอิง">
+              <p className="px-4 py-3 text-sm">ส่งมอบตาม{quotationLink}</p>
+            </SidePanel>
+          )}
+        </>
+      }
+      secondary={
+        <>
+          {doc.status !== "void" && !unsent && <SharePanel type="delivery_note" documentId={doc.id} links={shareLinks} />}
+          <DocumentHistory documentId={doc.id} type="delivery_note" />
+        </>
+      }
+    >
       <DocumentPaper doc={doc} items={items} reference={quotation?.number} response={response} />
-    </div>
+    </DocumentDetail>
   );
 }

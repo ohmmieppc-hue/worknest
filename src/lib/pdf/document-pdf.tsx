@@ -2,7 +2,7 @@ import path from "node:path";
 import { Children, type ComponentProps, type ReactNode } from "react";
 import { Document, Font, Image, Page, StyleSheet, Text as PdfText, View } from "@react-pdf/renderer";
 import { bahtText } from "@/lib/bahttext";
-import { DOC_META } from "@/lib/documents";
+import { docLabel } from "@/lib/documents";
 import { formatDate, formatMoney } from "@/lib/format";
 import { paymentMethodLabel } from "@/lib/payments";
 import type { ClientResponse, DocumentItem, DocumentRow, PartySnapshot, Payment } from "@/lib/types";
@@ -101,7 +101,7 @@ export interface PdfExtras {
 }
 
 export function DocumentPdf({ doc, items, extras }: { doc: DocumentRow; items: DocumentItem[]; extras: PdfExtras }) {
-  const meta = DOC_META[doc.type];
+  const meta = docLabel(doc);
   const hasWht = Number(doc.wht_amount) > 0;
   // Delivery notes list what is handed over; prices stay on the quotation.
   const priced = doc.type !== "delivery_note";

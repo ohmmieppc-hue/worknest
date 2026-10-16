@@ -27,6 +27,8 @@ export async function updateWorkspaceAction(_prev: SettingsState, formData: Form
   if (promptpay && ![10, 13].includes(promptpay.length)) {
     return { error: "พร้อมเพย์ต้องเป็นเบอร์โทร 10 หลัก หรือเลข 13 หลัก" };
   }
+  const vatRegistered = formData.get("vat_registered") === "on";
+  if (vatRegistered && !taxId) return { error: "ผู้จดทะเบียน VAT ต้องกรอกเลขประจำตัวผู้เสียภาษี 13 หลัก" };
   if (!Number.isInteger(validDays) || validDays < 1) return { error: "ระยะยืนราคาต้องเป็นจำนวนวันอย่างน้อย 1 วัน" };
   if (!Number.isInteger(creditDays) || creditDays < 0) return { error: "เครดิตเทอมต้องเป็นจำนวนวัน (0 ขึ้นไป)" };
 
@@ -46,6 +48,7 @@ export async function updateWorkspaceAction(_prev: SettingsState, formData: Form
       email: text("email") || null,
       promptpay_id: promptpay || null,
       bank_accounts: bankAccounts,
+      vat_registered: vatRegistered,
       default_quote_valid_days: validDays,
       default_credit_days: creditDays,
     })
