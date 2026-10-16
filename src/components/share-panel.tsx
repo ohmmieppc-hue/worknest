@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Button, Card, ErrorMessage, inputClass } from "@/components/ui";
 import { useConfirm } from "@/components/confirm-dialog";
 import type { DocumentType } from "@/lib/types";
@@ -17,6 +17,18 @@ export interface ShareLinkRow {
 
 const fmt = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" });
 const when = (iso: string | null) => (iso ? fmt.format(new Date(iso)) : "—");
+
+// A new link changes the document to "sent", and the refreshed page renders
+// this panel in a different spot (and may pass through the loading fallback),
+// so a fresh instance mounts. Keep the one-time URL for a few minutes so that
+// instance can still show it. Memory only: gone on reload.
+const FRESH_FOR_MS = 5 * 60_000;
+const freshUrls = new Map<string, { url: string; at: number }>();
+
+function takeFreshUrl(documentId: string) {
+  const fresh = freshUrls.get(documentId);
+  return fresh && Date.now() - fresh.at < FRESH_FOR_MS ? fresh.url : undefined;
+}
 
 /**
  * Customer link for a document. `suggested` (the document is issued but not
@@ -37,9 +49,16 @@ export function SharePanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
-  const [url, setUrl] = useState<string>();
+  const [handedOver] = useState(() => takeFreshUrl(documentId));
+  const [url, setUrl] = useState(handedOver);
   const [copied, setCopied] = useState(false);
   const confirm = useConfirm();
+  const copyRef = useRef<HTMLDivElement>(null);
+
+  // Arrived with a link created by the previous instance: bring it into view.
+  useEffect(() => {
+    if (handedOver) copyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [handedOver]);
 
   const live = links.filter((l) => !l.revoked_at && (!l.expires_at || new Date(l.expires_at) > new Date()));
 
@@ -50,6 +69,7 @@ export function SharePanel({
       if (result.error) setError(result.error);
       else {
         setUrl(result.url);
+        if (result.url) freshUrls.set(documentId, { url: result.url, at: Date.now() });
         setCopied(false);
         router.refresh();
       }
@@ -85,7 +105,7 @@ export function SharePanel({
   const lastOpened = live.map((l) => l.last_accessed_at).filter(Boolean).sort().at(-1) ?? null;
 
   const copyBox = url && (
-    <div className="border-t border-stone-200 bg-brand-50/60 p-4">
+    <div ref={copyRef} className="border-t border-stone-200 bg-brand-50/60 p-4">
       <p className="mb-2 text-sm font-medium text-brand-700">คัดลอกลิงก์นี้ส่งให้ลูกค้า (แสดงครั้งเดียว ระบบไม่เก็บลิงก์เต็มไว้)</p>
       <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} className={`${inputClass} font-mono text-xs`} />
       <div className="mt-2 flex items-center gap-3">

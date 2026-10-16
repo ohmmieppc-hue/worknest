@@ -6,12 +6,31 @@
 const CACHE = "worknest-v1";
 const PRECACHE = ["/offline.html", "/icons/icon-192.png"];
 
+// Local dev: build files are not content-hashed, so remove any worker and cache
+// left from an earlier visit and reload open tabs onto fresh code.
+const DEV = ["localhost", "127.0.0.1"].includes(self.location.hostname);
+if (DEV) {
+  self.addEventListener("install", () => self.skipWaiting());
+  self.addEventListener("activate", (event) => {
+    event.waitUntil(
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+        .then(() => self.registration.unregister())
+        .then(() => self.clients.matchAll({ type: "window" }))
+        .then((tabs) => tabs.forEach((tab) => tab.navigate(tab.url))),
+    );
+  });
+}
+
 self.addEventListener("install", (event) => {
+  if (DEV) return;
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
+  if (DEV) return;
   event.waitUntil(
     caches
       .keys()
@@ -21,6 +40,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (DEV) return;
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
