@@ -93,12 +93,12 @@ export function DocumentPaper({ doc, items, reference, children, response, sched
             <tr>
               <th className="w-8 py-2 font-medium">#</th>
               <th className="py-2 font-medium">รายละเอียด</th>
-              <th className="py-2 text-right font-medium">จำนวน</th>
+              <th className="py-2 pl-4 text-right font-medium whitespace-nowrap">จำนวน</th>
               {priced && (
                 <>
-                  <th className="py-2 text-right font-medium">ราคา/หน่วย</th>
-                  <th className="py-2 text-right font-medium">ส่วนลด</th>
-                  <th className="py-2 text-right font-medium">จำนวนเงิน</th>
+                  <th className="py-2 pl-4 text-right font-medium whitespace-nowrap">ราคา/หน่วย</th>
+                  <th className="py-2 pl-4 text-right font-medium whitespace-nowrap">ส่วนลด</th>
+                  <th className="py-2 pl-4 text-right font-medium whitespace-nowrap">จำนวนเงิน</th>
                 </>
               )}
             </tr>
@@ -107,17 +107,17 @@ export function DocumentPaper({ doc, items, reference, children, response, sched
             {items.map((i, index) => (
               <tr key={i.id} className="align-top">
                 <td className="py-2.5 text-stone-400">{index + 1}</td>
-                <td className="py-2.5 whitespace-pre-line">{i.description}</td>
-                <td className="py-2.5 text-right whitespace-nowrap tabular-nums">
+                <td className="py-2.5 break-words whitespace-pre-line">{i.description}</td>
+                <td className="py-2.5 pl-4 text-right whitespace-nowrap tabular-nums">
                   {Number(i.quantity).toLocaleString("th-TH")} {i.unit}
                 </td>
                 {priced && (
                   <>
-                    <td className="py-2.5 text-right tabular-nums">{formatMoney(i.unit_price)}</td>
-                    <td className="py-2.5 text-right tabular-nums">
+                    <td className="py-2.5 pl-4 text-right whitespace-nowrap tabular-nums">{formatMoney(i.unit_price)}</td>
+                    <td className="py-2.5 pl-4 text-right whitespace-nowrap tabular-nums">
                       {Number(i.discount_amount) ? formatMoney(i.discount_amount) : "—"}
                     </td>
-                    <td className="py-2.5 text-right tabular-nums">{formatMoney(i.amount)}</td>
+                    <td className="py-2.5 pl-4 text-right whitespace-nowrap tabular-nums">{formatMoney(i.amount)}</td>
                   </>
                 )}
               </tr>
