@@ -71,3 +71,15 @@ export async function loadServiceOptions() {
   const { data } = await supabase.from("service_items").select("*").is("archived_at", null).order("name");
   return (data ?? []) as ServiceItem[];
 }
+
+/**
+ * PostgREST `or` filter matching a document's number, title or client name.
+ * Client names live in another table, so matching clients are looked up first.
+ */
+export async function documentSearchFilter(supabase: Awaited<ReturnType<typeof createClient>>, term: string) {
+  const { data } = await supabase.from("clients").select("id").ilike("name", `%${term}%`).limit(200);
+  const clientIds = (data ?? []).map((c) => c.id as string);
+  return [`number.ilike.%${term}%`, `title.ilike.%${term}%`, clientIds.length ? `client_id.in.(${clientIds.join(",")})` : null]
+    .filter(Boolean)
+    .join(",");
+}

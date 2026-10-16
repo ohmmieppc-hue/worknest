@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Card, EmptyState, LinkButton, PageHeader } from "@/components/ui";
+import { EmptyState, LinkButton, PageHeader } from "@/components/ui";
 import { DocumentStatusBadge, PaymentStatusBadge } from "@/components/status-badge";
-import { formatDate, formatMoney } from "@/lib/format";
+import { DataList, ListToolbar, Pagination, StatGrid, TabNav } from "@/components/list-kit";
+import { addDaysISO, formatDate, formatMoney, todayISO } from "@/lib/format";
+import { documentSearchFilter } from "@/lib/document-data";
+import { pageRange, parseListParams, searchTerm } from "@/lib/list";
 import { requireWorkspace } from "@/lib/workspace";
 import type { DocumentRow, InvoiceBalance } from "@/lib/types";
 import { Suspense } from "react";
@@ -10,18 +12,20 @@ import { PageSkeleton } from "@/components/page-skeleton";
 
 export const metadata: Metadata = { title: "ใบแจ้งหนี้" };
 
+const PATH = "/invoices";
+
 type Row = Pick<DocumentRow, "id" | "number" | "title" | "status" | "issue_date" | "due_date" | "total"> & {
   client: { name: string } | null;
-  balance?: InvoiceBalance;
 };
 
-const TABS: { key: string; label: string; match: (r: Row) => boolean }[] = [
-  { key: "all", label: "ทั้งหมด", match: () => true },
-  { key: "unpaid", label: "ค้างชำระ", match: (r) => !!r.balance && r.balance.payment_status !== "paid" },
-  { key: "overdue", label: "เกินกำหนด", match: (r) => !!r.balance?.is_overdue },
-  { key: "paid", label: "ชำระครบแล้ว", match: (r) => r.balance?.payment_status === "paid" },
-  { key: "draft", label: "ร่าง", match: (r) => r.status === "draft" },
-  { key: "void", label: "ยกเลิก", match: (r) => r.status === "void" },
+// Payment tabs filter on the balance view; draft / void tabs on the document status.
+const TABS: { key: string; label: string; balance?: (b: InvoiceBalance) => boolean; status?: DocumentRow["status"] }[] = [
+  { key: "all", label: "ทั้งหมด" },
+  { key: "unpaid", label: "ค้างชำระ", balance: (b) => b.payment_status !== "paid" },
+  { key: "overdue", label: "เกินกำหนด", balance: (b) => b.is_overdue },
+  { key: "paid", label: "ชำระครบแล้ว", balance: (b) => b.payment_status === "paid" },
+  { key: "draft", label: "ร่าง", status: "draft" },
+  { key: "void", label: "ยกเลิก", status: "void" },
 ];
 
 // The Suspense boundary lives inside the page so client navigations into this
@@ -35,109 +39,138 @@ export default function InvoicesPage(props: PageProps<"/invoices">) {
 }
 
 async function InvoicesPageContent({ searchParams }: PageProps<"/invoices">) {
-  const { tab: tabParam } = await searchParams;
-  const tab = TABS.find((t) => t.key === tabParam) ?? TABS[0];
+  const params = parseListParams(await searchParams);
+  const tab = TABS.find((t) => t.key === params.tab) ?? TABS[0];
+  const term = searchTerm(params.q);
+  const [from, to] = pageRange(params.page);
 
   const { supabase } = await requireWorkspace();
-  const [{ data: docs }, { data: balances }] = await Promise.all([
-    supabase
-      .from("documents")
-      .select("id, number, title, status, issue_date, due_date, total, client:clients(name)")
-      .eq("type", "invoice")
-      .order("created_at", { ascending: false })
-      .limit(200),
+  const monthStart = `${todayISO().slice(0, 7)}-01`;
+  const [{ data: balanceData }, { data: statusData }, { data: payments }] = await Promise.all([
     supabase.from("invoice_balances").select("*"),
+    supabase.from("documents").select("status, due_date, id").eq("type", "invoice"),
+    supabase.from("payments").select("cash_amount, wht_amount").gte("received_on", monthStart),
   ]);
-  const byId = new Map(((balances ?? []) as InvoiceBalance[]).map((b) => [b.invoice_id, b]));
-  const all = ((docs ?? []) as unknown as Row[]).map((r) => ({ ...r, balance: byId.get(r.id) }));
-  const rows = all.filter(tab.match);
+  const balances = (balanceData ?? []) as InvoiceBalance[];
+  const statuses = (statusData ?? []) as Pick<DocumentRow, "id" | "status" | "due_date">[];
 
-  const outstanding = all.reduce((sum, r) => sum + Number(r.balance?.outstanding ?? 0), 0);
-  const overdue = all.filter((r) => r.balance?.is_overdue);
+  let query = supabase
+    .from("documents")
+    .select("id, number, title, status, issue_date, due_date, total, client:clients(name)", { count: "exact" })
+    .eq("type", "invoice")
+    .order("created_at", { ascending: false })
+    .range(from, to);
+  if (tab.balance) {
+    const ids = balances.filter(tab.balance).map((b) => b.invoice_id);
+    query = query.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  }
+  if (tab.status) query = query.eq("status", tab.status);
+  if (term) query = query.or(await documentSearchFilter(supabase, term));
+  const { data, count } = await query;
+  const rows = (data ?? []) as unknown as Row[];
+  const byId = new Map(balances.map((b) => [b.invoice_id, b]));
+
+  const sum = (list: InvoiceBalance[]) => list.reduce((s, b) => s + Number(b.outstanding), 0);
+  const open = balances.filter((b) => b.payment_status !== "paid");
+  const overdue = balances.filter((b) => b.is_overdue);
+  const week = addDaysISO(todayISO(), 7);
+  const dueIds = new Set(statuses.filter((d) => d.due_date && d.due_date >= todayISO() && d.due_date <= week).map((d) => d.id));
+  const dueSoon = open.filter((b) => dueIds.has(b.invoice_id) && !b.is_overdue);
+  const received = (payments ?? []).reduce((s, p) => s + Number(p.cash_amount) + Number(p.wht_amount), 0);
 
   return (
     <div>
-      <PageHeader title="ใบแจ้งหนี้" actions={<LinkButton href="/invoices/new">+ สร้างใบแจ้งหนี้</LinkButton>} />
+      <PageHeader
+        title="ใบแจ้งหนี้"
+        description="เรียกเก็บเงิน บันทึกรับชำระ และออกใบเสร็จ"
+        actions={<LinkButton href="/invoices/new">+ สร้างใบแจ้งหนี้</LinkButton>}
+      />
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:max-w-2xl">
-        <Card className="p-4">
-          <p className="text-sm text-stone-500">ยอดค้างรับทั้งหมด</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatMoney(outstanding)}</p>
-        </Card>
-        <Card className={`p-4 ${overdue.length ? "border-red-200 bg-red-50/40" : ""}`}>
-          <p className="text-sm text-stone-500">เกินกำหนดชำระ</p>
-          <p className={`mt-1 text-2xl font-semibold tabular-nums ${overdue.length ? "text-red-700" : ""}`}>
-            {formatMoney(overdue.reduce((s, r) => s + Number(r.balance?.outstanding ?? 0), 0))}
-            <span className="ml-2 text-sm font-normal text-stone-500">{overdue.length} ใบ</span>
-          </p>
-        </Card>
-      </div>
+      <StatGrid
+        stats={[
+          { label: "ยอดค้างรับทั้งหมด", value: formatMoney(sum(open)), hint: `${open.length} ใบ` },
+          {
+            label: "เกินกำหนดชำระ",
+            value: formatMoney(sum(overdue)),
+            hint: `${overdue.length} ใบ`,
+            tone: overdue.length ? "danger" : "default",
+          },
+          {
+            label: "ครบกำหนดใน 7 วัน",
+            value: formatMoney(sum(dueSoon)),
+            hint: `${dueSoon.length} ใบ`,
+            tone: dueSoon.length ? "warning" : "default",
+          },
+          { label: "รับชำระเดือนนี้", value: formatMoney(received), hint: `${(payments ?? []).length} รายการ`, tone: "success" },
+        ]}
+      />
 
-      <div className="mb-4 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-stone-200">
-        {TABS.map((t) => (
-          <Link
-            key={t.key}
-            href={t.key === "all" ? "/invoices" : `/invoices?tab=${t.key}`}
-            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition ${
-              t.key === tab.key ? "border-brand-600 text-brand-700" : "border-transparent text-stone-500 hover:text-stone-800"
-            }`}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
+      <ListToolbar path={PATH} params={params} placeholder="ค้นหาเลขที่ ชื่องาน หรือชื่อลูกค้า" />
+      <TabNav
+        path={PATH}
+        params={params}
+        tabs={TABS.map((t) => ({
+          ...t,
+          count: t.balance
+            ? balances.filter(t.balance).length
+            : t.status
+              ? statuses.filter((d) => d.status === t.status).length
+              : undefined,
+        }))}
+      />
 
-      <Card className="overflow-hidden">
-        {rows.length === 0 ? (
-          <EmptyState
-            title={tab.key === "all" ? "ยังไม่มีใบแจ้งหนี้" : "ไม่มีใบแจ้งหนี้ในหมวดนี้"}
-            description={tab.key === "all" ? "สร้างจากใบเสนอราคาที่ลูกค้าตอบรับแล้ว หรือสร้างใหม่ได้ที่นี่" : undefined}
-            action={tab.key === "all" ? <LinkButton href="/invoices/new">+ สร้างใบแจ้งหนี้</LinkButton> : undefined}
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-stone-200 bg-stone-50 text-left text-xs text-stone-500">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">เลขที่</th>
-                  <th className="px-4 py-2.5 font-medium">ลูกค้า / งาน</th>
-                  <th className="px-4 py-2.5 font-medium">ครบกำหนด</th>
-                  <th className="px-4 py-2.5 text-right font-medium">ยอดรวม</th>
-                  <th className="px-4 py-2.5 text-right font-medium">คงค้าง</th>
-                  <th className="px-4 py-2.5 font-medium">สถานะ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {rows.map((r) => (
-                  <tr key={r.id} className="hover:bg-stone-50">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <Link href={`/invoices/${r.id}`} className="font-medium hover:text-brand-700 hover:underline">
-                        {r.number ?? "ร่าง"}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link href={`/invoices/${r.id}`} className="block">
-                        <div>{r.client?.name ?? "—"}</div>
-                        {r.title && <div className="text-xs text-stone-500">{r.title}</div>}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-stone-600">{formatDate(r.due_date)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatMoney(r.total)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{r.balance ? formatMoney(r.balance.outstanding) : "—"}</td>
-                    <td className="px-4 py-3">
-                      {r.balance ? (
-                        <PaymentStatusBadge status={r.balance.payment_status} overdue={r.balance.is_overdue} />
-                      ) : (
-                        <DocumentStatusBadge status={r.status} />
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      <DataList
+        rows={rows}
+        href={(r) => `${PATH}/${r.id}`}
+        columns={[
+          { header: "เลขที่", cell: (r) => r.number ?? "ร่าง", className: "whitespace-nowrap" },
+          {
+            header: "ลูกค้า / งาน",
+            cell: (r) => (
+              <>
+                <div>{r.client?.name ?? "—"}</div>
+                {r.title && <div className="text-xs text-stone-500">{r.title}</div>}
+              </>
+            ),
+          },
+          { header: "ครบกำหนด", cell: (r) => formatDate(r.due_date), className: "whitespace-nowrap text-stone-600" },
+          { header: "ยอดรวม", cell: (r) => formatMoney(r.total), align: "right" },
+          { header: "คงค้าง", cell: (r) => (byId.has(r.id) ? formatMoney(byId.get(r.id)!.outstanding) : "—"), align: "right" },
+          { header: "สถานะ", cell: (r) => <Status row={r} balance={byId.get(r.id)} /> },
+        ]}
+        mobile={(r) => {
+          const b = byId.get(r.id);
+          return {
+            title: r.number ?? "ร่าง",
+            badge: <Status row={r} balance={b} />,
+            subtitle: [r.client?.name, r.title].filter(Boolean).join(" · "),
+            meta: `ครบกำหนด ${formatDate(r.due_date)}`,
+            amount: b && b.payment_status !== "paid" ? `ค้าง ${formatMoney(b.outstanding)}` : formatMoney(r.total),
+          };
+        }}
+        empty={
+          term ? (
+            <EmptyState title="ไม่พบใบแจ้งหนี้ที่ตรงกับการค้นหา" description={`ค้นหา “${params.q}”`} />
+          ) : tab.key === "all" ? (
+            <EmptyState
+              title="ยังไม่มีใบแจ้งหนี้"
+              description="สร้างจากใบเสนอราคาที่ลูกค้าตอบรับแล้ว หรือสร้างใหม่ได้ที่นี่"
+              action={<LinkButton href="/invoices/new">+ สร้างใบแจ้งหนี้</LinkButton>}
+            />
+          ) : (
+            <EmptyState title="ไม่มีใบแจ้งหนี้ในหมวดนี้" />
+          )
+        }
+      />
+      <Pagination path={PATH} params={params} total={count ?? 0} />
     </div>
+  );
+}
+
+function Status({ row, balance }: { row: Row; balance?: InvoiceBalance }) {
+  return balance ? (
+    <PaymentStatusBadge status={balance.payment_status} overdue={balance.is_overdue} />
+  ) : (
+    <DocumentStatusBadge status={row.status} />
   );
 }
