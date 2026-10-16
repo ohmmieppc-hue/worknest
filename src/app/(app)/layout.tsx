@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { requireWorkspace } from "@/lib/workspace";
 import { ConfirmProvider } from "@/components/confirm-dialog";
+import { InstallBanner } from "@/components/pwa";
 import { NavLinks } from "./nav-links";
 
 // Large screens get a sidebar; phones and tablets keep a top bar whose links
@@ -35,6 +36,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       </aside>
 
       <div className="min-w-0 flex-1">
+        <InstallBanner />
         <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur print:hidden lg:hidden">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
             {logo}

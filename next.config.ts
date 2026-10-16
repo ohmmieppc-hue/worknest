@@ -15,6 +15,18 @@ const nextConfig: NextConfig = {
     "/api/documents/[id]/pdf": ["./assets/fonts/**"],
     "/p/[token]/pdf": ["./assets/fonts/**"],
   },
+  // The service worker must always be re-checked so updates reach installed apps.
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+        ],
+      },
+    ];
+  },
   turbopack: {
     rules: {
       "*.css": {
