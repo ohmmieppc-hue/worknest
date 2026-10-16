@@ -21,8 +21,13 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
 async function LoginBody({ searchParams }: Pick<PageProps<"/login">, "searchParams">) {
   await connection();
   const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  if (data?.claims) redirect("/dashboard");
+  // Ask Supabase, not just the token: after signing out elsewhere the token
+  // stays valid until it expires, and the app pages (getUser) would send the
+  // visitor straight back here, looping between /login and /dashboard.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) redirect("/dashboard");
 
   const { error, mode } = await searchParams;
   return (
