@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Button, ErrorMessage, Field, inputClass } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { signIn, signUp, type AuthState } from "./actions";
 
 export function LoginForm({ initialMode = "signin" }: { initialMode?: "signin" | "signup" }) {
@@ -44,13 +45,11 @@ export function LoginForm({ initialMode = "signin" }: { initialMode?: "signin" |
           </Link>
         )}
         <Field label="รหัสผ่าน" hint={mode === "signup" ? "อย่างน้อย 8 ตัวอักษร" : undefined}>
-          <input
+          <PasswordInput
             name="password"
-            type="password"
             required
             minLength={mode === "signup" ? 8 : undefined}
             autoComplete={mode === "signin" ? "current-password" : "new-password"}
-            className={inputClass}
           />
         </Field>
 

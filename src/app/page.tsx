@@ -6,7 +6,7 @@ import { formatMoney } from "@/lib/format";
 export const metadata: Metadata = {
   title: { absolute: "WorkNest — ใบเสนอราคาและเก็บเงินสำหรับฟรีแลนซ์" },
   description:
-    "ออกใบเสนอราคาภาษาไทย คำนวณหัก ณ ที่จ่ายให้อัตโนมัติ เลขที่เอกสารต่อเนื่อง และติดตามลูกค้าในที่เดียว สำหรับฟรีแลนซ์ไทย",
+    "ใบเสนอราคา ใบแจ้งหนี้ ใบส่งมอบงาน และใบเสร็จภาษาไทย ลูกค้าตอบรับผ่านลิงก์ แบ่งชำระเป็นงวด QR พร้อมเพย์ และคำนวณหัก ณ ที่จ่ายให้อัตโนมัติ สำหรับฟรีแลนซ์ไทย",
 };
 
 const primaryCta =
@@ -81,8 +81,8 @@ function Hero() {
             </span>
           </h1>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-stone-600">
-            WorkNest คำนวณหัก ณ ที่จ่าย ออกเลขที่เอกสารต่อเนื่อง และเขียนยอดเป็นตัวอักษรภาษาไทยให้เอง
-            พร้อมกำหนดขอบเขตงานและจำนวนรอบแก้ไขตั้งแต่ใบเสนอราคา ลดงานงอกตั้งแต่ต้น
+            ตั้งแต่ใบเสนอราคา ใบแจ้งหนี้ ใบส่งมอบงาน จนถึงใบเสร็จ ส่งเป็นลิงก์ให้ลูกค้ากดตอบรับและตรวจรับงานได้เอง
+            แบ่งชำระเป็นงวด มี QR พร้อมเพย์ และคำนวณหัก ณ ที่จ่ายให้ครบ
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link href="/login?mode=signup" className={primaryCta}>
@@ -109,6 +109,11 @@ function QuotationPreview() {
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
   const wht = Math.round(subtotal * 3) / 100;
   const payable = subtotal - wht;
+  const schedule = [
+    { label: "มัดจำก่อนเริ่มงาน", percent: 40 },
+    { label: "ส่งงานรอบแรก", percent: 40 },
+    { label: "ส่งมอบงาน", percent: 20 },
+  ];
 
   return (
     <div className="relative mx-auto w-full max-w-md lg:max-w-none" aria-hidden="true">
@@ -154,9 +159,23 @@ function QuotationPreview() {
         </dl>
         <p className="mt-2 text-right text-xs text-stone-500">({bahtText(payable)})</p>
 
+        <div className="mt-4 border-t border-stone-200 pt-3">
+          <p className="mb-1.5 text-xs text-stone-500">งวดชำระ</p>
+          <ul className="space-y-1 text-xs">
+            {schedule.map((s) => (
+              <li key={s.label} className="flex justify-between gap-3">
+                <span>
+                  {s.label} <span className="text-stone-400">{s.percent}%</span>
+                </span>
+                <span className="tabular-nums">{formatMoney((subtotal * s.percent) / 100)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full bg-stone-100 px-2.5 py-1 text-stone-600">แก้ไขได้ 2 รอบ</span>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">ลูกค้าตอบรับแล้ว</span>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">ลูกค้าตอบรับผ่านลิงก์แล้ว</span>
         </div>
       </div>
     </div>
@@ -174,6 +193,10 @@ function Problems() {
       body: "ระบุขอบเขตงาน สิ่งที่ไม่รวม และจำนวนรอบแก้ไขไว้ในใบเสนอราคา เมื่อลูกค้าตอบรับแล้ว ทั้งสองฝ่ายมีข้อตกลงเดียวกันให้อ้างอิง",
     },
     {
+      title: "ส่งงานแล้ว ลูกค้าเงียบ",
+      body: "ส่งใบส่งมอบงานเป็นลิงก์ ลูกค้ากดตรวจรับหรือขอแก้ไขได้เลย ระบบเก็บชื่อและเวลาไว้เป็นหลักฐาน และนับรอบแก้ไขให้เทียบกับที่ตกลง",
+    },
+    {
       title: "เอกสารกระจัดกระจาย",
       body: "ใบเสนอราคาอยู่ใน Word ลูกค้าอยู่ในแชต เลขที่เอกสารจำเอง WorkNest รวมลูกค้าและเอกสารไว้ที่เดียว พร้อมเลขที่ต่อเนื่องที่ไม่ข้ามและไม่ซ้ำ",
     },
@@ -183,7 +206,7 @@ function Problems() {
       <h2 className="max-w-2xl text-3xl font-semibold tracking-tight text-balance">
         เรื่องที่ฟรีแลนซ์เจอทุกเดือน แต่ไม่ควรต้องเสียเวลาด้วย
       </h2>
-      <div className="mt-10 grid gap-6 md:grid-cols-3">
+      <div className="mt-10 grid gap-6 md:grid-cols-2">
         {problems.map((p, i) => (
           <div key={p.title} className="rounded-xl border border-stone-200 p-6">
             <p className="text-sm font-semibold text-brand-600">0{i + 1}</p>
@@ -198,17 +221,17 @@ function Problems() {
 
 function Workflow() {
   const steps: { title: string; body: string; soon?: boolean }[] = [
-    { title: "เพิ่มลูกค้า", body: "บุคคลหรือนิติบุคคล พร้อมเลขผู้เสียภาษีและอัตราหัก ณ ที่จ่ายเริ่มต้น" },
-    { title: "สร้างใบเสนอราคา", body: "ใส่รายการ ขอบเขตงาน และรอบแก้ไข ระบบคำนวณยอดให้ทันที" },
-    { title: "ออกเอกสาร", body: "ได้เลขที่อัตโนมัติ และล็อกไม่ให้แก้ย้อนหลัง ต้องการแก้ก็ยกเลิกแล้วออกฉบับใหม่" },
-    { title: "ลูกค้าตอบรับ", body: "บันทึกการตอบรับ ระบบเปลี่ยนสถานะจากว่าที่ลูกค้าเป็นลูกค้าปัจจุบันให้" },
-    { title: "ใบแจ้งหนี้และใบเสร็จ", body: "แบ่งงวด มัดจำ รับชำระบางส่วน และ QR พร้อมเพย์", soon: true },
+    { title: "สร้างใบเสนอราคา", body: "ใส่รายการ ขอบเขตงาน รอบแก้ไข และงวดชำระ เช่น 40/40/20 ระบบคำนวณยอดให้ทันที" },
+    { title: "ลูกค้าตอบรับผ่านลิงก์", body: "ลูกค้าไม่ต้องสมัคร เปิดลิงก์แล้วกดตอบรับ ระบบเก็บชื่อ เวลา และ IP เป็นหลักฐาน" },
+    { title: "ใบแจ้งหนี้ทีละงวด", body: "กดออกใบแจ้งหนี้ตามงวดที่ตกลง ลูกค้าสแกน QR พร้อมเพย์ด้วยยอดที่ถูกต้อง" },
+    { title: "ส่งมอบงาน", body: "ลูกค้ากดตรวจรับหรือขอแก้ไข คำขอแก้ไขนับเป็นรอบแก้ไขให้อัตโนมัติ" },
+    { title: "รับเงินและใบเสร็จ", body: "บันทึกรับเงิน ออกใบเสร็จทันที และติดตามว่าได้ 50 ทวิ ครบหรือยัง" },
   ];
   return (
     <section id="how" className="scroll-mt-20 border-y border-stone-200 bg-[#f7f7f5]">
       <div className="mx-auto max-w-6xl px-4 py-20">
         <h2 className="text-3xl font-semibold tracking-tight">จากคุยงาน ถึงได้เงิน</h2>
-        <p className="mt-2 max-w-2xl text-stone-600">ทุกขั้นต่อกันในคลิกเดียว ไม่ต้องกรอกข้อมูลลูกค้าซ้ำ</p>
+        <p className="mt-2 max-w-2xl text-stone-600">ทุกขั้นต่อกันในคลิกเดียว ไม่ต้องกรอกข้อมูลลูกค้าซ้ำ และระบบบอกเสมอว่าขั้นต่อไปคืออะไร</p>
         <ol className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {steps.map((s, i) => (
             <li key={s.title} className="relative rounded-xl border border-stone-200 bg-white p-5">
@@ -238,8 +261,11 @@ function ThaiFeatures() {
     { title: "บาทถ้วน และ พ.ศ.", body: "เขียนจำนวนเงินเป็นตัวอักษรภาษาไทย และแสดงวันที่แบบพุทธศักราช" },
     { title: "เลขที่เอกสารต่อเนื่อง", body: "เช่น QT-2569-0001 แยกตามประเภทเอกสารและปี ไม่ข้าม ไม่ซ้ำ แม้กดพร้อมกัน" },
     { title: "เอกสารแก้ย้อนหลังไม่ได้", body: "เก็บข้อมูลลูกค้า ณ วันที่ออกไว้ แก้ข้อมูลลูกค้าภายหลังก็ไม่กระทบใบเก่า" },
-    { title: "QR พร้อมเพย์บนใบแจ้งหนี้", body: "ลูกค้าสแกนจ่ายได้ทันทีพร้อมยอดที่ถูกต้อง", soon: true },
-    { title: "ติดตามใบ 50 ทวิ", body: "รู้ว่าลูกค้ารายไหนยังไม่ส่งหนังสือรับรองหัก ณ ที่จ่าย ก่อนถึงหน้ายื่นภาษี", soon: true },
+    { title: "QR พร้อมเพย์บนใบแจ้งหนี้", body: "ลูกค้าสแกนจ่ายได้ทันทีด้วยยอดที่ต้องโอนจริง หลังหัก ณ ที่จ่ายแล้ว" },
+    { title: "ติดตามใบ 50 ทวิ", body: "รู้ว่าลูกค้ารายไหนยังไม่ส่งหนังสือรับรองหัก ณ ที่จ่าย ก่อนถึงหน้ายื่นภาษี" },
+    { title: "ใบกำกับภาษีสำหรับผู้จด VAT", body: "คิด VAT 7% และออกใบเสร็จรับเงิน/ใบกำกับภาษีเมื่อได้รับเงิน ตามหลักงานบริการ" },
+    { title: "PDF ฟอนต์ไทยพร้อมโลโก้", body: "ดาวน์โหลดหรือพิมพ์เป็น A4 ได้ทุกเอกสาร ตัดคำภาษาไทยถูกต้อง" },
+    { title: "ใช้บนมือถือได้", body: "เช็กยอดค้างรับ บันทึกรับเงิน และส่งลิงก์ให้ลูกค้าได้จากโทรศัพท์" },
   ];
   return (
     <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20">
@@ -272,7 +298,15 @@ function Faq() {
     },
     {
       q: "ออกใบกำกับภาษีได้ไหม",
-      a: "ยังไม่ได้ ตอนนี้รองรับใบเสนอราคา ส่วนใบแจ้งหนี้และใบเสร็จรับเงินอยู่ระหว่างพัฒนา ใบกำกับภาษีจะเปิดเฉพาะผู้ที่จด VAT หลังตรวจสอบข้อกำหนดให้ครบก่อน",
+      a: "ได้สำหรับผู้ที่จด VAT แล้ว เปิดในตั้งค่า แล้วใบเสร็จของใบแจ้งหนี้ที่มี VAT จะออกเป็นใบเสร็จรับเงิน/ใบกำกับภาษีเมื่อได้รับเงิน ผู้ที่ยังไม่จด VAT ออกใบกำกับภาษีไม่ได้ตามกฎหมาย",
+    },
+    {
+      q: "ลูกค้าต้องสมัครสมาชิกไหม",
+      a: "ไม่ต้อง ลูกค้าเปิดลิงก์ที่คุณส่งให้ แล้วดูเอกสาร ดาวน์โหลด PDF ตอบรับใบเสนอราคา หรือตรวจรับงานได้เลย ลิงก์มีอายุ 90 วันและเพิกถอนได้",
+    },
+    {
+      q: "ลูกค้าแบ่งจ่ายหลายงวดไม่เท่ากันได้ไหม",
+      a: "ได้ ตั้งงวดชำระในใบเสนอราคาเป็นเปอร์เซ็นต์หรือจำนวนเงิน เช่น 40/40/20 ลูกค้าเห็นตั้งแต่ก่อนตอบรับ แล้วคุณออกใบแจ้งหนี้ทีละงวดได้ในคลิกเดียว",
     },
     {
       q: "หัก ณ ที่จ่ายคิดอย่างไร",
@@ -310,7 +344,7 @@ function FinalCta() {
     <section className="mx-auto max-w-6xl px-4 py-20">
       <div className="rounded-2xl bg-brand-700 px-6 py-14 text-center text-white sm:px-12">
         <h2 className="text-3xl font-semibold tracking-tight text-balance">ส่งใบเสนอราคาใบต่อไปจาก WorkNest</h2>
-        <p className="mx-auto mt-3 max-w-xl text-brand-100">ตั้งค่าครั้งเดียว แล้วสร้างใบเสนอราคาได้ภายในไม่กี่นาที</p>
+        <p className="mx-auto mt-3 max-w-xl text-brand-100">ตั้งค่าครั้งเดียว แล้วสร้างใบเสนอราคาได้ภายในไม่กี่นาที ไปจนถึงเก็บเงินครบทุกงวด</p>
         <Link
           href="/login?mode=signup"
           className="mt-8 inline-flex items-center justify-center rounded-lg bg-white px-6 py-3 text-sm font-semibold text-brand-700 transition hover:bg-brand-50"
