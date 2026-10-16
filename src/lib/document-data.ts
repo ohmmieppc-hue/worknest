@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/workspace";
-import type { Client, DocumentItem, DocumentRow, DocumentType } from "@/lib/types";
+import type { Client, DocumentItem, DocumentRow, DocumentType, ServiceItem } from "@/lib/types";
 
 export async function loadDocument(type: DocumentType, id: string) {
   const { supabase } = await requireWorkspace();
@@ -44,4 +44,10 @@ export async function loadDocumentNumber(id: string | null) {
   const { supabase } = await requireWorkspace();
   const { data } = await supabase.from("documents").select("id, type, number").eq("id", id).maybeSingle();
   return data as Pick<DocumentRow, "id" | "type" | "number"> | null;
+}
+
+export async function loadServiceOptions() {
+  const { supabase } = await requireWorkspace();
+  const { data } = await supabase.from("service_items").select("*").is("archived_at", null).order("name");
+  return (data ?? []) as ServiceItem[];
 }

@@ -26,6 +26,8 @@ export interface DraftHeader {
 }
 
 export interface DraftItem {
+  /** Set when the line was picked from the saved services list. */
+  service_item_id?: string;
   description: string;
   quantity: string;
   unit: string;

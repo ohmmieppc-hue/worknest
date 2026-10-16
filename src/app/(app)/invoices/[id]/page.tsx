@@ -8,7 +8,7 @@ import { SharePanel } from "@/components/share-panel";
 import { DocumentEditor } from "@/components/document-editor";
 import { DocumentPaper, VoidNotice } from "@/components/document-paper";
 import { PaymentInstructions } from "@/components/payment-instructions";
-import { loadClientOptions, loadDocument, loadShareLinks, loadDocumentNumber } from "@/lib/document-data";
+import { loadClientOptions, loadServiceOptions, loadDocument, loadShareLinks, loadDocumentNumber } from "@/lib/document-data";
 import { formatMoney, todayISO } from "@/lib/format";
 import { amountsDue } from "@/lib/payments";
 import type { InvoiceBalance } from "@/lib/types";
@@ -34,7 +34,7 @@ async function InvoicePageContent({ params }: PageProps<"/invoices/[id]">) {
   const shareLinks = doc.status === "draft" ? [] : await loadShareLinks(doc.id);
 
   if (doc.status === "draft") {
-    const clients = await loadClientOptions(doc.client_id);
+    const [clients, services] = await Promise.all([loadClientOptions(doc.client_id), loadServiceOptions()]);
     return (
       <div>
         <PageHeader
@@ -42,7 +42,7 @@ async function InvoicePageContent({ params }: PageProps<"/invoices/[id]">) {
           description="เลขที่เอกสารจะถูกออกให้อัตโนมัติเมื่อกด “ออกใบแจ้งหนี้”"
           actions={<DocumentStatusBadge status={doc.status} />}
         />
-        <DocumentEditor doc={{ ...doc, type: "invoice" }} items={items} clients={clients} />
+        <DocumentEditor doc={{ ...doc, type: "invoice" }} items={items} clients={clients} services={services} />
       </div>
     );
   }
@@ -91,7 +91,7 @@ async function InvoicePageContent({ params }: PageProps<"/invoices/[id]">) {
         {doc.status !== "void" && <SharePanel type="invoice" documentId={doc.id} links={shareLinks} />}
 
         {balance && live && (
-          <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="ยอดรวมทั้งสิ้น" value={balance.total} />
             <Stat label="รับเงินแล้ว" value={balance.cash_received} />
             <Stat label="ลูกค้าหัก ณ ที่จ่าย" value={balance.wht_withheld} />

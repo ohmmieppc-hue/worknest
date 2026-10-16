@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/quotations", label: "ใบเสนอราคา" },
   { href: "/invoices", label: "ใบแจ้งหนี้" },
   { href: "/clients", label: "ลูกค้า" },
+  { href: "/services", label: "บริการ" },
   { href: "/settings", label: "ตั้งค่า" },
 ];
 
@@ -36,7 +37,7 @@ function Links({ pathname }: { pathname: string | null }) {
             key={href}
             href={href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition ${
               active ? "bg-brand-50 text-brand-700" : "text-stone-600 hover:bg-stone-100"
             }`}
           >

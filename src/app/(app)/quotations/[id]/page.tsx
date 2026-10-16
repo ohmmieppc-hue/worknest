@@ -4,7 +4,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { DocumentStatusBadge } from "@/components/status-badge";
 import { DocumentEditor } from "@/components/document-editor";
 import { DocumentPaper, VoidNotice } from "@/components/document-paper";
-import { loadClientOptions, loadDocument, loadShareLinks } from "@/lib/document-data";
+import { loadClientOptions, loadServiceOptions, loadDocument, loadShareLinks } from "@/lib/document-data";
 import { formatMoney } from "@/lib/format";
 import type { DocumentRow } from "@/lib/types";
 import { DocumentActions } from "@/components/document-actions";
@@ -31,7 +31,7 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
   const shareLinks = doc.status === "draft" ? [] : await loadShareLinks(doc.id);
 
   if (doc.status === "draft") {
-    const clients = await loadClientOptions(doc.client_id);
+    const [clients, services] = await Promise.all([loadClientOptions(doc.client_id), loadServiceOptions()]);
     return (
       <div>
         <PageHeader
@@ -39,7 +39,7 @@ async function QuotationPageContent({ params }: PageProps<"/quotations/[id]">) {
           description="เลขที่เอกสารจะถูกออกให้อัตโนมัติเมื่อกด “ออกใบเสนอราคา”"
           actions={<DocumentStatusBadge status={doc.status} />}
         />
-        <DocumentEditor doc={{ ...doc, type: "quotation" }} items={items} clients={clients} />
+        <DocumentEditor doc={{ ...doc, type: "quotation" }} items={items} clients={clients} services={services} />
       </div>
     );
   }

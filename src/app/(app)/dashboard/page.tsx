@@ -94,7 +94,7 @@ async function DashboardPageContent() {
         }
       />
 
-      <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="ยอดค้างรับ" value={formatMoney(outstanding)} note={`${invoices.length} ใบแจ้งหนี้`} href="/invoices?tab=unpaid" />
         <Stat
           label="เกินกำหนดชำระ"
@@ -221,7 +221,7 @@ function Stat({
   const body = (
     <Card className={`h-full p-4 transition ${toneClass} ${href ? "hover:border-stone-300 hover:shadow-sm" : ""}`}>
       <p className="text-sm text-stone-500">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${tone === "danger" ? "text-red-700" : ""}`}>{value}</p>
+      <p className={`mt-1 text-xl font-semibold tabular-nums sm:text-2xl ${tone === "danger" ? "text-red-700" : ""}`}>{value}</p>
       {note && <p className={`mt-0.5 text-xs ${tone === "warning" ? "text-amber-800" : "text-stone-500"}`}>{note}</p>}
     </Card>
   );

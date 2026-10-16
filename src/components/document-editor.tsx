@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Card, ErrorMessage, Field, inputClass } from "@/components/ui";
@@ -7,7 +8,7 @@ import { bahtText } from "@/lib/bahttext";
 import { formatMoney } from "@/lib/format";
 import { computeTotals, lineAmountCents } from "@/lib/totals";
 import { DOC_META, type DraftHeader, type DraftItem, type DraftPayload } from "@/lib/documents";
-import type { Client, DocumentItem, DocumentRow } from "@/lib/types";
+import type { Client, DocumentItem, DocumentRow, ServiceItem } from "@/lib/types";
 import { deleteDraftAction, issueDocumentAction, saveDraftAction } from "@/app/(app)/documents/actions";
 
 type Row = DraftItem & { key: string };
@@ -19,10 +20,11 @@ interface Props {
   doc: DocumentRow & { type: "quotation" | "invoice" };
   items: DocumentItem[];
   clients: Pick<Client, "id" | "name">[];
+  services: ServiceItem[];
 }
 
 // Draft editor shared by quotations and invoices.
-export function DocumentEditor({ doc, items, clients }: Props) {
+export function DocumentEditor({ doc, items, clients, services }: Props) {
   const isQuotation = doc.type === "quotation";
   const label = DOC_META[doc.type].label;
   const router = useRouter();
@@ -48,6 +50,7 @@ export function DocumentEditor({ doc, items, clients }: Props) {
     items.length
       ? items.map((i) => ({
           key: i.id,
+          service_item_id: i.service_item_id ?? undefined,
           description: i.description,
           quantity: num(i.quantity),
           unit: i.unit ?? "",
@@ -63,6 +66,25 @@ export function DocumentEditor({ doc, items, clients }: Props) {
   const updateRow = (key: string, patch: Partial<DraftItem>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const removeRow = (key: string) => setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : [emptyRow()]));
+  // Fill the trailing empty row if there is one, otherwise append.
+  const addService = (serviceId: string) => {
+    const s = services.find((x) => x.id === serviceId);
+    if (!s) return;
+    const row: Row = {
+      key: crypto.randomUUID(),
+      service_item_id: s.id,
+      description: s.description ? `${s.name}
+${s.description}` : s.name,
+      quantity: "1",
+      unit: s.unit,
+      unit_price: num(s.unit_price),
+      discount_amount: "",
+    };
+    setRows((rs) => {
+      const last = rs[rs.length - 1];
+      return last && !last.description.trim() && !last.unit_price ? [...rs.slice(0, -1), row] : [...rs, row];
+    });
+  };
   const moveRow = (index: number, delta: number) =>
     setRows((rs) => {
       const next = [...rs];
@@ -78,6 +100,7 @@ export function DocumentEditor({ doc, items, clients }: Props) {
   const payload = (): DraftPayload => ({
     header,
     items: rows.map((r) => ({
+      service_item_id: r.service_item_id,
       description: r.description,
       quantity: r.quantity,
       unit: r.unit,
@@ -257,10 +280,29 @@ export function DocumentEditor({ doc, items, clients }: Props) {
             </tbody>
           </table>
         </div>
-        <div className="border-t border-stone-100 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 px-4 py-3">
           <Button type="button" variant="ghost" onClick={() => setRows((rs) => [...rs, emptyRow()])}>
             + เพิ่มรายการ
           </Button>
+          {services.length > 0 ? (
+            <select
+              value=""
+              onChange={(e) => addService(e.target.value)}
+              aria-label="เพิ่มจากรายการบริการ"
+              className={`${inputClass} w-auto max-w-xs`}
+            >
+              <option value="">+ เพิ่มจากรายการบริการ…</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · {formatMoney(s.unit_price)}/{s.unit}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Link href="/services" className="text-sm text-stone-500 hover:text-brand-700 hover:underline">
+              บันทึกบริการที่ทำประจำไว้เลือกใช้ซ้ำ →
+            </Link>
+          )}
         </div>
 
         <div className="grid gap-6 border-t border-stone-200 bg-stone-50/60 p-4 sm:grid-cols-2">

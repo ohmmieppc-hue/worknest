@@ -103,6 +103,14 @@ export interface DocumentRow {
   created_at: string;
 }
 
+export interface ServiceItem {
+  id: string;
+  name: string;
+  description: string | null;
+  unit: string;
+  unit_price: string;
+}
+
 export interface InvoiceBalance {
   invoice_id: string;
   total: string;
@@ -138,6 +146,7 @@ export interface DocumentItem {
   id: string;
   document_id: string;
   sort_order: number;
+  service_item_id: string | null;
   description: string;
   quantity: string;
   unit: string | null;

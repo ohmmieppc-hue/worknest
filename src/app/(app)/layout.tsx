@@ -13,7 +13,10 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           <Link href="/dashboard" className="text-lg font-semibold tracking-tight">
             Work<span className="text-brand-600">Nest</span>
           </Link>
-          <NavLinks />
+          {/* Phones: its own full-width row that scrolls sideways instead of wrapping words. */}
+          <div className="order-last -mx-4 w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] sm:order-none sm:mx-0 sm:w-auto sm:px-0">
+            <NavLinks />
+          </div>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <Suspense fallback={<span className="h-4 w-28 animate-pulse rounded bg-stone-100" />}>
               <WorkspaceName />
