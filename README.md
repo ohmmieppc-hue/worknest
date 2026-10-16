@@ -27,6 +27,14 @@ npm install --no-save @electric-sql/pglite
 node db/schema.test.mjs db/schema.sql
 ```
 
+## อีเมลแจ้งเตือน
+
+- แจ้งเจ้าของ workspace ทันทีเมื่อลูกค้าเปิดดูเอกสารครั้งแรก / ตอบรับ / ปฏิเสธผ่าน Portal
+- สรุปรายวัน 08:00 (Vercel Cron → `/api/cron/reminders`): ใบแจ้งหนี้ครบกำหนดใน 3 วัน / วันนี้ / เกินกำหนด 1, 7, 14, 30 วัน และใบเสนอราคาหมดอายุในอีก 2 วัน
+- ส่งผ่าน Resend (`RESEND_API_KEY`, `EMAIL_FROM`) — ไม่ตั้ง key = แค่ log (dry-run)
+- `CRON_SECRET` ใช้ทั้งเป็นรหัสของ cron และรหัสเรียกฟังก์ชัน `notify_*` ใน DB (เก็บ SHA-256 ไว้ใน `app_secrets`) จึงไม่ต้องใช้ service-role key
+- กันส่งซ้ำด้วย `notification_log.idempotency_key`
+
 ## โครงสร้าง
 
 | Path | หน้าที่ |

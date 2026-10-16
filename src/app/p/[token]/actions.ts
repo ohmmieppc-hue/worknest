@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { isTokenShaped, requestMeta } from "@/lib/portal";
+import { after } from "next/server";
+import { notifyClientEvent } from "@/lib/notify";
+import { getPortalDocument, isTokenShaped, requestMeta } from "@/lib/portal";
 
 export interface RespondState {
   error?: string;
@@ -22,6 +24,7 @@ export async function respondAction(token: string, accept: boolean, _prev: Respo
   if (accept && !formData.get("agree")) return { error: "กรุณายืนยันว่าได้อ่านขอบเขตงานและเงื่อนไขแล้ว" };
 
   const { ip, userAgent } = await requestMeta();
+  const { data: portal } = await getPortalDocument(token);
   const supabase = await createClient();
   const { error } = await supabase.rpc("portal_respond", {
     p_token: token,
@@ -35,6 +38,7 @@ export async function respondAction(token: string, accept: boolean, _prev: Respo
     return { error: match ? match[1] : "บันทึกไม่สำเร็จ กรุณาลองใหม่" };
   }
 
+  if (portal) after(() => notifyClientEvent(portal.document.id, accept ? "accepted" : "rejected", name));
   revalidatePath(`/p/${token}`);
   return {};
 }

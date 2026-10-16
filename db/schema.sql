@@ -895,7 +895,8 @@ begin
 end $$;
 
 -- Called when the client opens the link: sent → viewed, plus an evidence row.
-create function portal_record_view(p_token text, p_ip text, p_user_agent text) returns void
+-- Returns true only for that first view, so the app can notify the owner once.
+create function portal_record_view(p_token text, p_ip text, p_user_agent text) returns boolean
 language plpgsql security definer set search_path = public as $$
 declare
   v_link share_links;
@@ -903,7 +904,7 @@ declare
 begin
   v_link := portal_link(p_token);
   if v_link.id is null then
-    return;
+    return false;
   end if;
   update share_links set last_accessed_at = now() where id = v_link.id;
 
@@ -913,7 +914,9 @@ begin
     insert into document_events (workspace_id, document_id, event, actor, ip, user_agent)
     values (v_doc.workspace_id, v_doc.id, 'viewed', 'client',
             case when p_ip ~ '^[0-9a-fA-F:.]+$' then p_ip::inet end, left(p_user_agent, 500));
+    return true;
   end if;
+  return false;
 end $$;
 
 -- Client accepts or rejects a quotation. Returns the new status.
@@ -949,6 +952,122 @@ begin
   values (v_doc.workspace_id, v_doc.id, v_status::text, 'client', left(trim(p_name), 200),
           case when p_ip ~ '^[0-9a-fA-F:.]+$' then p_ip::inet end, left(p_user_agent, 500));
   return v_status;
+end $$;
+
+-- =============================================================================
+-- Email notifications
+-- The app server (portal actions and the daily cron route) calls these with a
+-- shared secret (CRON_SECRET) instead of holding a service-role key. Only the
+-- SHA-256 of the secret is stored. They expose owner emails, so every one of
+-- them rejects a wrong secret before doing anything.
+-- =============================================================================
+create table app_secrets (
+  name         text primary key,
+  secret_hash  bytea not null,
+  created_at   timestamptz not null default now()
+);
+alter table app_secrets enable row level security;  -- no policies: unreadable via the API
+
+create function notify_secret_ok(p_secret text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from app_secrets
+    where name = 'notify' and secret_hash = sha256(convert_to(coalesce(p_secret, ''), 'UTF8'))
+  );
+$$;
+
+create function workspace_owner_emails(p_workspace uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(u.email order by u.email), '[]'::jsonb)
+  from workspace_members m join auth.users u on u.id = m.user_id
+  where m.workspace_id = p_workspace and u.email is not null;
+$$;
+
+-- What an "event happened on this document" email needs.
+create function notify_document_context(p_secret text, p_document_id uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v jsonb;
+begin
+  if not notify_secret_ok(p_secret) then
+    raise exception 'forbidden';
+  end if;
+  select jsonb_build_object(
+    'workspace_id', d.workspace_id, 'workspace_name', w.display_name,
+    'document_id', d.id, 'type', d.type, 'number', d.number, 'title', d.title,
+    'status', d.status, 'total', d.total, 'client_name', c.name,
+    'emails', workspace_owner_emails(d.workspace_id))
+  into v
+  from documents d
+  join workspaces w on w.id = d.workspace_id
+  join clients c on c.id = d.client_id
+  where d.id = p_document_id;
+  return v;
+end $$;
+
+-- One row per workspace with something to remind about on p_today:
+-- invoices due in 3 days / today / overdue by 1, 7, 14 or 30 days, and
+-- quotations expiring in 2 days. Fixed milestones keep the digest from
+-- repeating the same overdue invoice every day.
+create function notify_due_digest(p_secret text, p_today date default current_date) returns setof jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not notify_secret_ok(p_secret) then
+    raise exception 'forbidden';
+  end if;
+  return query
+  with items as (
+    select d.workspace_id, jsonb_build_object(
+             'kind', case when d.due_date < p_today then 'overdue' when d.due_date = p_today then 'due_today' else 'due_soon' end,
+             'document_id', d.id, 'number', d.number, 'client_name', c.name,
+             'date', d.due_date, 'days', d.due_date - p_today, 'amount', b.outstanding) as item
+    from invoice_balances b
+    join documents d on d.id = b.invoice_id
+    join clients c on c.id = d.client_id
+    where b.outstanding > 0
+      and (d.due_date = p_today + 3 or d.due_date = p_today or (p_today - d.due_date) in (1, 7, 14, 30))
+    union all
+    select d.workspace_id, jsonb_build_object(
+             'kind', 'quote_expiring', 'document_id', d.id, 'number', d.number, 'client_name', c.name,
+             'date', d.valid_until, 'days', d.valid_until - p_today, 'amount', d.total)
+    from documents d
+    join clients c on c.id = d.client_id
+    where d.type = 'quotation' and d.status in ('issued', 'sent', 'viewed') and d.valid_until = p_today + 2
+  )
+  select jsonb_build_object(
+           'workspace_id', w.id, 'workspace_name', w.display_name,
+           'emails', workspace_owner_emails(w.id),
+           'items', jsonb_agg(i.item order by i.item ->> 'kind', i.item ->> 'number'))
+  from items i
+  join workspaces w on w.id = i.workspace_id
+  group by w.id;
+end $$;
+
+-- Reserve an idempotency key before sending; false means it was already sent.
+create function notify_claim(p_secret text, p_workspace uuid, p_kind text, p_key text, p_recipient text,
+                             p_entity_type text, p_entity_id uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if not notify_secret_ok(p_secret) then
+    raise exception 'forbidden';
+  end if;
+  insert into notification_log (workspace_id, channel, kind, entity_type, entity_id, recipient, idempotency_key)
+  values (p_workspace, 'email', p_kind, p_entity_type, p_entity_id, left(p_recipient, 500), p_key)
+  on conflict (idempotency_key) do nothing;
+  return found;
+end $$;
+
+create function notify_result(p_secret text, p_key text, p_ok boolean, p_error text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not notify_secret_ok(p_secret) then
+    raise exception 'forbidden';
+  end if;
+  update notification_log
+  set status = case when p_ok then 'sent' else 'failed' end,
+      sent_at = case when p_ok then now() end,
+      error = left(p_error, 500)
+  where idempotency_key = p_key;
 end $$;
 
 -- Daily job (pg_cron): expire quotations past valid_until.
@@ -1098,6 +1217,20 @@ revoke execute on function portal_respond(text, boolean, text, text, text) from 
 grant execute on function portal_get_document(text) to anon, authenticated;
 grant execute on function portal_record_view(text, text, text) to anon, authenticated;
 grant execute on function portal_respond(text, boolean, text, text, text) to anon, authenticated;
+
+-- Notifications: secret-gated entry points are callable; helpers are not.
+revoke execute on function notify_secret_ok(text) from public, anon, authenticated;
+revoke execute on function workspace_owner_emails(uuid) from public, anon, authenticated;
+revoke execute on function notify_document_context(text, uuid) from public;
+revoke execute on function notify_due_digest(text, date) from public;
+revoke execute on function notify_claim(text, uuid, text, text, text, text, uuid) from public;
+revoke execute on function notify_result(text, text, boolean, text) from public;
+grant execute on function notify_document_context(text, uuid) to anon, authenticated;
+grant execute on function notify_due_digest(text, date) to anon, authenticated;
+grant execute on function notify_claim(text, uuid, text, text, text, text, uuid) to anon, authenticated;
+grant execute on function notify_result(text, text, boolean, text) to anon, authenticated;
+-- Set the secret once per database (value = CRON_SECRET in the app env):
+--   insert into app_secrets (name, secret_hash) values ('notify', sha256(convert_to('<secret>', 'UTF8')));
 alter function expire_quotations() set search_path = public;
 alter function dashboard_summary(uuid) set search_path = public;
 

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { connection } from "next/server";
+import { after, connection } from "next/server";
 import { Suspense } from "react";
 import { buttonClass, Card } from "@/components/ui";
 import { DocumentPaper, TotalRow } from "@/components/document-paper";
@@ -7,6 +7,7 @@ import { PaymentInstructions } from "@/components/payment-instructions";
 import { DOC_META } from "@/lib/documents";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import { amountsDue, paymentMethodLabel } from "@/lib/payments";
+import { notifyClientEvent } from "@/lib/notify";
 import { getPortalDocument, requestMeta } from "@/lib/portal";
 import { RespondForm } from "./respond-form";
 
@@ -42,7 +43,9 @@ async function Portal({ params }: Pick<PageProps<"/p/[token]">, "params">) {
   const isOwner = user ? !!(await supabase.from("documents").select("id").eq("id", doc.id).maybeSingle()).data : false;
   if (!isOwner) {
     const { ip, userAgent } = await requestMeta();
-    await supabase.rpc("portal_record_view", { p_token: token, p_ip: ip, p_user_agent: userAgent });
+    const { data: firstView } = await supabase.rpc("portal_record_view", { p_token: token, p_ip: ip, p_user_agent: userAgent });
+    // Email the owner after the page has been sent, so the client never waits on it.
+    if (firstView === true) after(() => notifyClientEvent(doc.id, "viewed"));
   }
 
   const due = doc.type === "invoice" && data.balance ? amountsDue(doc, data.balance) : null;

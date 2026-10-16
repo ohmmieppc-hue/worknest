@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "@/lib/supabase/env";
 
 // "/p" is the client portal: access is checked by share-link token, not session.
-const PUBLIC_PATHS = ["/login", "/auth", "/p"];
+// "/api/cron" is called by Vercel Cron and checks CRON_SECRET itself.
+const PUBLIC_PATHS = ["/login", "/auth", "/p", "/api/cron"];
 
 function isPublic(pathname: string) {
   return pathname === "/" || PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

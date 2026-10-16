@@ -6,7 +6,7 @@ const db = new PGlite();
 
 const stub = `
 create schema auth;
-create table auth.users (id uuid primary key);
+create table auth.users (id uuid primary key, email text);
 create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create role anon; create role authenticated;
@@ -200,7 +200,8 @@ ok('portal rejects revoked token', (await one(`select portal_get_document('tok-r
 ok('portal rejects expired token', (await one(`select portal_get_document('tok-expired') d`)).d === null);
 ok('portal rejects unknown token', (await one(`select portal_get_document('nope') d`)).d === null);
 
-await db.query(`select portal_record_view('tok-live', '203.0.113.9', 'test-agent')`);
+ok('first view returns true', (await one(`select portal_record_view('tok-live', '203.0.113.9', 'test-agent') v`)).v === true);
+ok('second view returns false', (await one(`select portal_record_view('tok-live', null, null) v`)).v === false);
 ok('portal view marks sent → viewed', (await one(`select status from documents where id=$1`, [qt4])).status === 'viewed');
 await expectError('portal respond needs a name', `select portal_respond('tok-live', true, '  ', null, null)`, [], /name is required/);
 await expectError('portal respond rejects bad token', `select portal_respond('tok-revoked', true, 'สมชาย', null, null)`, [], /invalid or expired/);
@@ -208,6 +209,28 @@ ok('portal accept', (await one(`select portal_respond('tok-live', true, 'สม�
 const ev = await one(`select actor, actor_name, ip from document_events where document_id=$1 and event='accepted'`, [qt4]);
 ok('accept evidence recorded', ev.actor === 'client' && ev.actor_name === 'สมชาย ใจดี' && ev.ip === null);
 await expectError('portal cannot respond twice', `select portal_respond('tok-live', false, 'x', null, null)`, [], /already accepted/);
+
+// Notifications (secret-gated)
+await db.query(`update auth.users set email = 'owner@example.com'`);
+await db.query(`insert into app_secrets (name, secret_hash) values ('notify', sha256(convert_to('s3cret', 'UTF8')))`);
+await expectError('notify rejects wrong secret', `select notify_document_context('nope', $1)`, [qt4], /forbidden/);
+const ctx = (await one(`select notify_document_context('s3cret', $1) c`, [qt4])).c;
+ok('notify context has owner email and doc', ctx.emails[0] === 'owner@example.com' && ctx.number?.startsWith('QT-') && ctx.client_name === 'บริษัท เอ จำกัด');
+ok('notify claim first time', (await one(`select notify_claim('s3cret', $1, 'accepted', 'k1', 'owner@example.com', 'document', $2) c`, [ws, qt4])).c === true);
+ok('notify claim is idempotent', (await one(`select notify_claim('s3cret', $1, 'accepted', 'k1', 'owner@example.com', 'document', $2) c`, [ws, qt4])).c === false);
+await db.query(`select notify_result('s3cret', 'k1', true, null)`);
+ok('notify result recorded', (await one(`select status from notification_log where idempotency_key='k1'`)).status === 'sent');
+
+const { id: inv5 } = await one(`insert into documents (workspace_id, type, client_id, due_date) values ($1,'invoice',$2,current_date + 3) returning id`, [ws, client]);
+await db.query(`insert into document_items (workspace_id, document_id, description, unit_price) values ($1,$2,'รอเก็บเงิน',1000)`, [ws, inv5]);
+await db.query(`update documents set status='issued' where id=$1`, [inv5]);
+let digest = (await db.query(`select d from notify_due_digest('s3cret') d`)).rows.map(r => r.d);
+ok('digest picks invoice due in 3 days', digest.length === 1 && digest[0].items.some(i => i.kind === 'due_soon' && i.document_id === inv5) && digest[0].emails[0] === 'owner@example.com');
+digest = (await db.query(`select d from notify_due_digest('s3cret', current_date + 4) d`)).rows.map(r => r.d);
+ok('digest picks overdue by 1 day', digest[0]?.items.some(i => i.kind === 'overdue' && i.days === -1));
+digest = (await db.query(`select d from notify_due_digest('s3cret', current_date + 5) d`)).rows.map(r => r.d);
+ok('digest skips overdue by 2 days', !digest.some(d => d.items.some(i => i.document_id === inv5)));
+await expectError('digest rejects wrong secret', `select notify_due_digest('nope')`, [], /forbidden/);
 
 // Workspace delete cascades even with issued docs
 await db.query(`delete from workspaces where id=$1`, [ws]);
